@@ -1,0 +1,1228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Doorbell Ditcher 64</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #000;
+            font-family: 'Courier New', Courier, monospace;
+            user-select: none;
+        }
+        #game-container {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+        #crosshair {
+            width: 4px;
+            height: 4px;
+            background-color: rgba(255, 255, 255, 0.5);
+            border-radius: 50%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+        #interaction-prompt {
+            position: absolute;
+            bottom: 20%;
+            color: white;
+            font-size: 24px;
+            text-shadow: 2px 2px 0 #000;
+            display: none;
+            text-transform: uppercase;
+            font-weight: bold;
+        }
+        #stealth-status {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #4ade80;
+            font-size: 20px;
+            font-weight: bold;
+            display: none;
+            text-shadow: 1px 1px 0 #000;
+        }
+        #objective-status {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: #fff;
+            font-size: 20px;
+            font-weight: bold;
+            text-shadow: 2px 2px 0 #000;
+        }
+        #stamina-bar-container {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            width: 200px;
+            height: 10px;
+            background-color: #333;
+            border: 2px solid #000;
+        }
+        #stamina-bar {
+            width: 100%;
+            height: 100%;
+            background-color: #fff;
+            transition: width 0.1s linear;
+        }
+        #start-screen, #death-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.85);
+            color: white;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            pointer-events: auto;
+            text-align: center;
+            z-index: 10;
+        }
+        #death-screen {
+            background-color: #8b0000;
+            display: none;
+        }
+        h1 {
+            font-size: 48px;
+            color: #ffaa00;
+            text-shadow: 4px 4px 0 #884400;
+            margin-bottom: 10px;
+        }
+        p {
+            font-size: 18px;
+            max-width: 600px;
+            line-height: 1.5;
+            color: #ccc;
+        }
+        .btn {
+            margin-top: 30px;
+            padding: 15px 30px;
+            font-size: 20px;
+            font-weight: bold;
+            font-family: inherit;
+            background-color: #ffaa00;
+            color: #000;
+            border: 4px solid #fff;
+            cursor: pointer;
+            text-transform: uppercase;
+        }
+        .btn:hover {
+            background-color: #fff;
+        }
+        /* CRT Scanline Effect Overlay */
+        .scanlines {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            background-size: 100% 4px, 6px 100%;
+            pointer-events: none;
+            z-index: 5;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container"></div>
+    <div class="scanlines"></div>
+    
+    <div id="ui-layer">
+        <div id="crosshair"></div>
+        <div id="stealth-status">[ HIDDEN ]</div>
+        <div id="objective-status">Doorbells: 0 / 5</div>
+        <div id="interaction-prompt">Press E to Ring Doorbell</div>
+        <div id="stamina-bar-container"><div id="stamina-bar"></div></div>
+    </div>
+
+    <div id="nv-overlay" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 255, 0, 0.15); mix-blend-mode: overlay; pointer-events: none; z-index: 4; box-shadow: inset 0 0 150px rgba(0,255,0,0.6);"></div>
+
+    <div id="start-screen">
+        <h1>DOORBELL DITCHER 64</h1>
+        <p>A nocturnal stealth simulator.</p>
+        <p><strong>Controls:</strong> WASD/Arrows to move. Mouse to look. SHIFT to sprint. E to interact. N for Nightvision.</p>
+        <p><strong>Objective:</strong> Ring 5 doorbells to alert the driver. Run and hide in bushes to break line of sight. Find the getaway car parked down the street to escape once its headlights turn on.</p>
+        <button class="btn" id="start-btn">Click to Start</button>
+    </div>
+
+    <div id="death-screen">
+        <h1 style="color: #fff; text-shadow: 4px 4px 0 #000;">CAUGHT</h1>
+        <p style="color: #fff;">Line of sight was not broken.</p>
+        <button class="btn" id="restart-btn">Try Again</button>
+    </div>
+
+    <div id="win-screen" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.9); color: white; flex-direction: column; justify-content: center; align-items: center; pointer-events: auto; text-align: center; z-index: 10;">
+        <h1 style="color: #4ade80; text-shadow: 4px 4px 0 #005500;">ESCAPED</h1>
+        <p style="color: #fff;">Mission Accomplished.</p>
+        <button class="btn" id="play-again-btn" onclick="location.reload()">Play Again</button>
+    </div>
+
+    <!-- ES Modules for Three.js -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        // --- Audio System (Procedural Web Audio) ---
+        const AudioSys = {
+            ctx: null,
+            init: function() {
+                this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+            },
+            playTone: function(freq, type, duration, vol, delay=0) {
+                if(!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, this.ctx.currentTime + delay);
+                gain.gain.setValueAtTime(vol, this.ctx.currentTime + delay);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + delay + duration);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(this.ctx.currentTime + delay);
+                osc.stop(this.ctx.currentTime + delay + duration);
+            },
+            dingDong: function() {
+                this.playTone(659.25, 'sine', 1.0, 0.3, 0); // E5
+                this.playTone(523.25, 'sine', 1.5, 0.3, 0.5); // C5
+            },
+            playChasePulse: function() {
+                if(!this.ctx) return;
+                this.playTone(100 + Math.random()*50, 'sawtooth', 0.2, 0.1);
+            },
+            playCaught: function() {
+                if(!this.ctx) return;
+                this.playTone(50, 'sawtooth', 2.0, 0.8);
+                this.playTone(80, 'square', 1.5, 0.5, 0.1);
+            }
+        };
+
+        // --- Game Variables ---
+        let camera, scene, renderer;
+        let prevTime = performance.now();
+        
+        // Input state
+        const keys = { w: false, a: false, s: false, d: false, shift: false, e: false };
+        let isLocked = false;
+        
+        // Player state
+        const player = {
+            mesh: null,
+            velocity: new THREE.Vector3(),
+            direction: new THREE.Vector3(),
+            speed: 6.0,
+            sprintMultiplier: 1.8,
+            stamina: 100,
+            isHidden: false,
+            radius: 0.5
+        };
+
+        // Camera setup
+        let pitchObject, yawObject;
+
+        // World Data
+        const houses = [];
+        const bushes = [];
+        const collisionBoxes = [];
+        const interactables = []; // Doorbell trigger zones
+        let fireflies;
+        const fireflyCount = 150;
+        let fireflyClock = 0;
+        
+        let ambientLight;
+        let nightVision = false;
+        const car = { group: null, active: false, driving: false, lights: [] };
+
+        let doorbellsRung = 0;
+        const doorbellsNeeded = 5;
+
+        // NPC AI State
+        const npc = {
+            active: false,
+            mesh: null,
+            light: null,
+            state: 'IDLE', // IDLE, CHASE, SEARCH
+            target: new THREE.Vector3(),
+            speed: 4.2, // Slower pursuit speed
+            searchTimer: 0,
+            lastPulse: 0,
+            bounce: new THREE.Vector3(), // Holds the deflection momentum
+            ignoreCollisionTimer: 0 // Prevents getting stuck on spawn
+        };
+
+        // UI Elements
+        const uiPrompt = document.getElementById('interaction-prompt');
+        const uiHidden = document.getElementById('stealth-status');
+        const uiObjective = document.getElementById('objective-status');
+        const staminaBar = document.getElementById('stamina-bar');
+
+        init();
+        animate();
+
+        function init() {
+            const container = document.getElementById('game-container');
+
+            // 1. Scene & Retro Aesthetic
+            scene = new THREE.Scene();
+            // Deep distance fog for N64 feel and optimization
+            scene.background = new THREE.Color(0x0a0c10);
+            scene.fog = new THREE.Fog(0x0a0c10, 5, 45);
+
+            // 2. Camera & Look Controller
+            camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 100);
+            
+            // Custom kinematic controller pivot
+            pitchObject = new THREE.Object3D();
+            pitchObject.add(camera);
+            yawObject = new THREE.Object3D();
+            yawObject.position.y = 1.5; // Eye height
+            yawObject.add(pitchObject);
+            scene.add(yawObject);
+
+            // 3. Renderer (Pixelated!)
+            renderer = new THREE.WebGLRenderer({ antialias: false });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            // CRUCIAL: Downscale pixel ratio to emulate retro low-res hardware
+            renderer.setPixelRatio(0.35); 
+            container.appendChild(renderer.domElement);
+
+            // 4. Lighting
+            ambientLight = new THREE.AmbientLight(0x202530, 1.5); // Moonlight
+            scene.add(ambientLight);
+
+            // Player flashlight/ambient glow
+            const playerLight = new THREE.PointLight(0x88aaff, 1, 10);
+            yawObject.add(playerLight);
+
+            // 5. Build Procedural Environment
+            buildEnvironment();
+            buildNPC();
+
+            // 6. Event Listeners
+            document.addEventListener('keydown', onKeyDown);
+            document.addEventListener('keyup', onKeyUp);
+            document.addEventListener('mousemove', onMouseMove);
+            
+            document.getElementById('start-btn').addEventListener('click', () => {
+                document.getElementById('start-screen').style.display = 'none';
+                document.body.requestPointerLock();
+                AudioSys.init();
+            });
+
+            document.getElementById('restart-btn').addEventListener('click', () => {
+                resetGame();
+                document.getElementById('death-screen').style.display = 'none';
+                document.body.requestPointerLock();
+            });
+
+            document.addEventListener('pointerlockchange', () => {
+                isLocked = document.pointerLockElement === document.body;
+            });
+
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        function buildEnvironment() {
+            // Materials (Flat shading for retro look)
+            const matGround = new THREE.MeshLambertMaterial({ color: 0x112211, flatShading: true });
+            const matRoad = new THREE.MeshLambertMaterial({ color: 0x1a1a1a, flatShading: true });
+            const matSidewalk = new THREE.MeshLambertMaterial({ color: 0x333333, flatShading: true });
+            const matDoor = new THREE.MeshLambertMaterial({ color: 0x3e2723, flatShading: true });
+            const matBush = new THREE.MeshLambertMaterial({ color: 0x0f2d12, flatShading: true });
+            const matMailbox = new THREE.MeshLambertMaterial({ color: 0x444455, flatShading: true });
+
+            // Sky Gradient
+            const skyGeo = new THREE.SphereGeometry(200, 16, 16);
+            const colors = [];
+            const pos = skyGeo.attributes.position;
+            const color = new THREE.Color();
+            for (let i = 0; i < pos.count; i++) {
+                const y = pos.getY(i);
+                const t = Math.max(0, Math.min(1, (y + 50) / 100));
+                color.lerpColors(new THREE.Color(0x0a1525), new THREE.Color(0x000000), t);
+                colors.push(color.r, color.g, color.b);
+            }
+            skyGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+            const skyMat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false });
+            const sky = new THREE.Mesh(skyGeo, skyMat);
+            scene.add(sky);
+
+            // Ground
+            const ground = new THREE.Mesh(new THREE.PlaneGeometry(300, 300), matGround);
+            ground.rotation.x = -Math.PI / 2;
+            scene.add(ground);
+
+            // Road
+            const road = new THREE.Mesh(new THREE.PlaneGeometry(12, 300), matRoad);
+            road.rotation.x = -Math.PI / 2;
+            road.position.y = 0.01;
+            scene.add(road);
+
+            // Sidewalks
+            const sidewalkLeft = new THREE.Mesh(new THREE.PlaneGeometry(2, 300), matSidewalk);
+            sidewalkLeft.rotation.x = -Math.PI / 2;
+            sidewalkLeft.position.set(-7, 0.02, 0);
+            scene.add(sidewalkLeft);
+            
+            const sidewalkRight = sidewalkLeft.clone();
+            sidewalkRight.position.set(7, 0.02, 0);
+            scene.add(sidewalkRight);
+
+            // Procedural Neighborhood Generation
+            const houseSpacing = 20;
+            const numHouses = 8;
+            const startZ = -80;
+
+            const houseGeom = new THREE.BoxGeometry(10, 6, 12);
+            const roofGeom = new THREE.ConeGeometry(8, 4, 4);
+            roofGeom.rotateY(Math.PI / 4);
+            
+            // Door geometry changed: Thin on X-axis, wide on Z-axis, taller on Y-axis
+            const doorGeom = new THREE.BoxGeometry(0.2, 4.5, 2.5);
+            const windowGeom = new THREE.BoxGeometry(0.3, 2.5, 3.0);
+            const bushGeom = new THREE.DodecahedronGeometry(1.5, 0); // Low poly bush
+
+            // Instance generation logic
+            for (let i = 0; i < numHouses; i++) {
+                const zPos = startZ + (i * houseSpacing);
+                
+                // Left side house
+                createHouse(-15, zPos, 1);
+                // Right side house
+                createHouse(15, zPos, -1);
+            }
+
+            function createHouse(x, z, dir) {
+                // Procedural Variation: Colors & Materials
+                const hue = Math.random();
+                const matHouseWalls = new THREE.MeshLambertMaterial({ color: new THREE.Color().setHSL(hue, 0.2 + Math.random()*0.3, 0.3 + Math.random()*0.4), flatShading: true });
+                const matHouseRoof = new THREE.MeshLambertMaterial({ color: new THREE.Color().setHSL(Math.random(), 0.1, 0.15 + Math.random()*0.2), flatShading: true });
+                
+                const windowIsOn = Math.random() > 0.5;
+                const matWindow = new THREE.MeshLambertMaterial({ 
+                    color: windowIsOn ? 0xffffaa : 0x112233, 
+                    emissive: windowIsOn ? 0xaa6600 : 0x051122, 
+                    flatShading: true 
+                });
+
+                // Procedural Variation: Structural Dimensions
+                const widthScale = 0.8 + Math.random() * 0.4;
+                const heightScale = 0.9 + Math.random() * 0.3;
+
+                // Base
+                const house = new THREE.Mesh(houseGeom, matHouseWalls);
+                house.scale.set(widthScale, heightScale, 1);
+                house.position.set(x, 3 * heightScale, z);
+                scene.add(house);
+                
+                // Collision Box for house
+                const box = new THREE.Box3().setFromObject(house);
+                collisionBoxes.push(box);
+
+                // Roof
+                const roof = new THREE.Mesh(roofGeom, matHouseRoof);
+                roof.scale.set(widthScale, 1 + Math.random()*0.5, 1.1); // Add pitch variation
+                roof.position.set(x, (6 * heightScale) + 2 * roof.scale.y, z);
+                scene.add(roof);
+
+                // Calculate exact wall offset based on procedural scale
+                const wallXOffset = 5.0 * widthScale;
+
+                // Door (Facing street)
+                const door = new THREE.Mesh(doorGeom, matDoor);
+                const doorX = x + (dir * wallXOffset); // Dynamically stick to wall
+                const doorZ = z + 2.0; // Offset door to one side of the house
+                door.position.set(doorX, 2.25, doorZ); // 2.25 is half of the 4.5 height
+                scene.add(door);
+
+                // Front Window
+                const frontWindow = new THREE.Mesh(windowGeom, matWindow);
+                const windowZ = z - 2.5; // Offset to the other side of the door
+                frontWindow.position.set(doorX, 2.5, windowZ);
+                scene.add(frontWindow);
+
+                // Walkway to Sidewalk
+                const sidewalkX = -7 * dir; // Fixed sidewalk coordinate relative to house side
+                const walkwayLength = Math.abs(doorX - sidewalkX);
+                const walkwayGeom = new THREE.PlaneGeometry(walkwayLength, 2);
+                const walkway = new THREE.Mesh(walkwayGeom, matSidewalk);
+                walkway.rotation.x = -Math.PI / 2;
+                const walkX = (doorX + sidewalkX) / 2;
+                walkway.position.set(walkX, 0.03, doorZ);
+                scene.add(walkway);
+
+                // Mailbox
+                const mbPostGeom = new THREE.BoxGeometry(0.2, 1.5, 0.2);
+                const mbGeom = new THREE.BoxGeometry(0.6, 0.5, 0.8);
+                const mbPost = new THREE.Mesh(mbPostGeom, matMailbox);
+                const mbBox = new THREE.Mesh(mbGeom, matMailbox);
+                const mbX = x > 0 ? 6.5 : -6.5;
+                const mbZ = z + 6.0;
+                mbPost.position.set(mbX, 0.75, mbZ);
+                mbBox.position.set(mbX, 1.6, mbZ);
+                scene.add(mbPost);
+                scene.add(mbBox);
+                
+                const mbCollisionBox = new THREE.Box3().setFromObject(mbPost).expandByObject(mbBox);
+                collisionBoxes.push(mbCollisionBox);
+
+                // Add to interaction zones (Doorbell)
+                interactables.push({
+                    type: 'doorbell',
+                    position: new THREE.Vector3(doorX, 1.5, doorZ),
+                    doorMesh: door,
+                    active: true,
+                    houseId: Math.random()
+                });
+
+                // Porch Light (50% chance per house)
+                if (Math.random() > 0.5) {
+                    const pLightGeom = new THREE.BoxGeometry(0.3, 0.4, 0.3);
+                    const pLightMat = new THREE.MeshLambertMaterial({ color: 0xffffee, emissive: 0xffaa33 });
+                    const pLightMesh = new THREE.Mesh(pLightGeom, pLightMat);
+                    const pLightZ = doorZ + 2.0; // Placed slightly to the side of the door
+                    pLightMesh.position.set(doorX, 3.8, pLightZ);
+                    scene.add(pLightMesh);
+
+                    const pLight = new THREE.PointLight(0xffaa33, 1.2, 10);
+                    // Move the light slightly off the wall so it casts nicely
+                    pLight.position.set(doorX + (dir * 0.5), 3.8, pLightZ);
+                    scene.add(pLight);
+                }
+
+                // Lamp Post (50% chance per house)
+                if (Math.random() > 0.5) {
+                    const poleGeom = new THREE.BoxGeometry(0.2, 4, 0.2);
+                    const lampGeom = new THREE.BoxGeometry(0.6, 0.4, 0.6);
+                    const matPole = new THREE.MeshLambertMaterial({ color: 0x111111, flatShading: true });
+                    const matLamp = new THREE.MeshLambertMaterial({ color: 0xffffee, emissive: 0xddaa55 });
+                    
+                    const pole = new THREE.Mesh(poleGeom, matPole);
+                    // Place lamp post near the driveway/sidewalk area
+                    const lampX = x + (dir * 7);
+                    const lampZ = z + 5;
+                    pole.position.set(lampX, 2, lampZ);
+                    scene.add(pole);
+                    
+                    const lamp = new THREE.Mesh(lampGeom, matLamp);
+                    lamp.position.set(lampX, 4.1, lampZ);
+                    scene.add(lamp);
+                    
+                    const streetLight = new THREE.PointLight(0xffaa55, 1.2, 18);
+                    streetLight.position.set(lampX, 3.8, lampZ);
+                    scene.add(streetLight);
+                    
+                    const box = new THREE.Box3().setFromObject(pole);
+                    collisionBoxes.push(box);
+                }
+
+                // Generate Bushes around house (Concealment Volumes)
+                for(let b=0; b<4; b++) {
+                    let bx, bz, isValid = false;
+                    let attempts = 0;
+                    
+                    while (!isValid && attempts < 20) {
+                        bx = x + (Math.random() * 12 - 6);
+                        bz = z + (Math.random() * 14 - 7);
+                        attempts++;
+                        
+                        // Ensure bush does not block the door or the walkway to the street
+                        const inDoorZCorridor = Math.abs(bz - doorZ) < 4.0;
+                        const inDoorXCorridor = (dir === 1 && bx > doorX - 2) || (dir === -1 && bx < doorX + 2);
+                        
+                        if (inDoorZCorridor && inDoorXCorridor) {
+                            isValid = false;
+                        } else {
+                            isValid = true;
+                        }
+                    }
+                    
+                    if (!isValid) continue;
+
+                    const bush = new THREE.Mesh(bushGeom, matBush);
+                    bush.position.set(bx, 0.8, bz);
+                    
+                    // Randomize bush rotation/scale for organic feel
+                    bush.rotation.y = Math.random() * Math.PI;
+                    bush.scale.setScalar(0.8 + Math.random() * 0.6);
+                    scene.add(bush);
+                    
+                    // Add solid collision (slightly smaller so player can hide inside edges)
+                    const bushBox = new THREE.Box3().setFromObject(bush);
+                    bushBox.expandByScalar(-0.4); 
+                    collisionBoxes.push(bushBox);
+                    
+                    // Add to stealth volumes list
+                    bushes.push({
+                        center: bush.position.clone(),
+                        radius: 2.8 * bush.scale.x // Increased radius so touching the outside edge hides you
+                    });
+                }
+            }
+            
+            // Scatter some stray bushes
+            for(let i=0; i<100; i++) {
+                let bx, bz, isValid = false;
+                let attempts = 0;
+                
+                while (!isValid && attempts < 20) {
+                    bx = (Math.random() > 0.5 ? 1 : -1) * (10 + Math.random()*20);
+                    bz = startZ + Math.random() * 160;
+                    attempts++;
+                    isValid = true;
+                    
+                    // Check against all doors to prevent blocking walkways
+                    for(let j=0; j<interactables.length; j++) {
+                        if (interactables[j].type !== 'doorbell') continue;
+                        const dX = interactables[j].position.x;
+                        const dZ = interactables[j].position.z;
+                        const dDir = dX < 0 ? 1 : -1;
+                        
+                        const inDoorZCorridor = Math.abs(bz - dZ) < 4.0;
+                        const inDoorXCorridor = (dDir === 1 && bx > dX - 2) || (dDir === -1 && bx < dX + 2);
+                        
+                        if (inDoorZCorridor && inDoorXCorridor) {
+                            isValid = false;
+                            break;
+                        }
+                    }
+                }
+                
+                if (!isValid) continue;
+
+                const bush = new THREE.Mesh(bushGeom, matBush);
+                bush.position.set(bx, 0.8, bz);
+                bush.rotation.y = Math.random() * Math.PI;
+                bush.scale.setScalar(0.8 + Math.random() * 0.8);
+                scene.add(bush);
+                
+                const bushBox = new THREE.Box3().setFromObject(bush);
+                bushBox.expandByScalar(-0.4); 
+                collisionBoxes.push(bushBox);
+
+                bushes.push({ center: bush.position.clone(), radius: 2.8 * bush.scale.x }); // Increased radius
+            }
+            
+            // Getaway Car (Smoother & More Realistic)
+            const carGroup = new THREE.Group();
+            carGroup.position.set(4, 0.0, startZ - 60); 
+            
+            // Chassis
+            const carMat = new THREE.MeshLambertMaterial({ color: 0x112233, flatShading: true });
+            const carBodyGeom = new THREE.BoxGeometry(4.2, 1.0, 9);
+            const carBody = new THREE.Mesh(carBodyGeom, carMat);
+            carBody.position.y = 0.8;
+            carGroup.add(carBody);
+            
+            // Cabin
+            const carWindowMat = new THREE.MeshLambertMaterial({ color: 0x112233, flatShading: true });
+            const carTopGeom = new THREE.BoxGeometry(3.6, 1.2, 4.5);
+            const carTop = new THREE.Mesh(carTopGeom, carWindowMat); // Dark glass
+            carTop.position.set(0, 1.8, -0.5);
+            carGroup.add(carTop);
+
+            // Cylindrical Wheels
+            const wheelGeom = new THREE.CylinderGeometry(0.7, 0.7, 4.4, 16);
+            wheelGeom.rotateZ(Math.PI / 2);
+            const wheelMat = new THREE.MeshLambertMaterial({ color: 0x050505 });
+            
+            const wheelFront = new THREE.Mesh(wheelGeom, wheelMat);
+            wheelFront.position.set(0, 0.7, -2.8);
+            carGroup.add(wheelFront);
+            
+            const wheelBack = new THREE.Mesh(wheelGeom, wheelMat);
+            wheelBack.position.set(0, 0.7, 2.8);
+            carGroup.add(wheelBack);
+
+            // Glowing Headlights
+            const hlGeom = new THREE.SphereGeometry(0.3, 16, 16);
+            const hlMat = new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0xffeeaa, emissiveIntensity: 0.0 });
+            const hl1 = new THREE.Mesh(hlGeom, hlMat);
+            hl1.position.set(-1.6, 1.0, -4.5);
+            carGroup.add(hl1);
+            const hl2 = new THREE.Mesh(hlGeom, hlMat);
+            hl2.position.set(1.6, 1.0, -4.5);
+            carGroup.add(hl2);
+
+            // Glowing Taillights
+            const tlMat = new THREE.MeshLambertMaterial({ color: 0xff0000, emissive: 0xaa0000, emissiveIntensity: 0.0 });
+            const tl1 = new THREE.Mesh(hlGeom, tlMat);
+            tl1.position.set(-1.6, 1.0, 4.5);
+            carGroup.add(tl1);
+            const tl2 = new THREE.Mesh(hlGeom, tlMat);
+            tl2.position.set(1.6, 1.0, 4.5);
+            carGroup.add(tl2);
+
+            // Realistic Spotlights
+            const spot1 = new THREE.SpotLight(0xffeeaa, 0.0, 80, Math.PI / 5, 0.5, 1);
+            spot1.position.copy(hl1.position);
+            spot1.target.position.set(-1.6, 0, -30);
+            carGroup.add(spot1);
+            carGroup.add(spot1.target);
+
+            const spot2 = new THREE.SpotLight(0xffeeaa, 0.0, 80, Math.PI / 5, 0.5, 1);
+            spot2.position.copy(hl2.position);
+            spot2.target.position.set(1.6, 0, -30);
+            carGroup.add(spot2);
+            carGroup.add(spot2.target);
+
+            car.lights = [hlMat, tlMat, spot1, spot2];
+
+            scene.add(carGroup);
+            car.group = carGroup;
+            collisionBoxes.push(new THREE.Box3().setFromObject(carGroup));
+
+            interactables.push({
+                type: 'car',
+                position: new THREE.Vector3(2, 1.5, startZ - 60), // Driver door side
+                active: true
+            });
+
+            buildAmbience();
+        }
+
+        function buildAmbience() {
+            // Moon
+            const moonGeo = new THREE.SphereGeometry(12, 16, 16);
+            const moonMat = new THREE.MeshBasicMaterial({ color: 0xffffee, fog: false });
+            const moon = new THREE.Mesh(moonGeo, moonMat);
+            moon.position.set(100, 80, -200);
+            scene.add(moon);
+
+            // Stars in the sky
+            const starGeo = new THREE.BufferGeometry();
+            const starPos = [];
+            for(let i=0; i<800; i++) {
+                starPos.push(
+                    (Math.random() - 0.5) * 300, // x
+                    30 + Math.random() * 100,    // y
+                    -250 + Math.random() * 300   // z
+                );
+            }
+            starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starPos, 3));
+            // Setting fog: false ensures stars are visible through the distance fog
+            const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.6, fog: false });
+            const stars = new THREE.Points(starGeo, starMat);
+            scene.add(stars);
+
+            // Floating Fireflies
+            const ffGeo = new THREE.BufferGeometry();
+            const ffPos = [];
+            const ffPhases = []; 
+            for(let i=0; i<fireflyCount; i++) {
+                ffPos.push(
+                    (Math.random() - 0.5) * 80, // x
+                    0.2 + Math.random() * 3,    // y
+                    -180 + Math.random() * 200  // z
+                );
+                ffPhases.push(Math.random() * Math.PI * 2);
+            }
+            ffGeo.setAttribute('position', new THREE.Float32BufferAttribute(ffPos, 3));
+            ffGeo.setAttribute('phase', new THREE.Float32BufferAttribute(ffPhases, 1));
+            
+            const ffMat = new THREE.PointsMaterial({ 
+                color: 0xccff55, 
+                size: 0.1, 
+                transparent: true, 
+                opacity: 0.8,
+                blending: THREE.AdditiveBlending,
+                fog: true
+            });
+            fireflies = new THREE.Points(ffGeo, ffMat);
+            scene.add(fireflies);
+        }
+
+        function buildNPC() {
+            npc.mesh = new THREE.Group();
+            
+            const matClothing = new THREE.MeshLambertMaterial({ color: 0x050505, flatShading: true });
+            const matSkin = new THREE.MeshLambertMaterial({ color: 0xbbbbbb, flatShading: true });
+            
+            // Body
+            const body = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.4, 0.4), matClothing);
+            body.position.y = 0.7;
+            npc.mesh.add(body);
+            
+            // Head
+            const head = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.4), matSkin);
+            head.position.y = 1.6;
+            npc.mesh.add(head);
+            
+            // Flashlight Arm (pointing forward)
+            const arm = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.8), matClothing);
+            arm.position.set(0.5, 1.0, 0.4);
+            npc.mesh.add(arm);
+
+            // Flashlight SpotLight
+            npc.light = new THREE.SpotLight(0xffeedd, 0, 40, Math.PI / 5, 0.5, 1);
+            npc.light.position.set(0.5, 1.0, 0.8);
+            
+            // Adding target to scene is required for SpotLight to aim correctly in world space
+            scene.add(npc.light.target);
+            
+            npc.mesh.add(npc.light);
+            npc.mesh.position.y = -10; // Hide initially
+            
+            scene.add(npc.mesh);
+        }
+
+        function onKeyDown(event) {
+            switch (event.code) {
+                case 'KeyW': case 'ArrowUp': keys.w = true; break;
+                case 'KeyA': case 'ArrowLeft': keys.a = true; break;
+                case 'KeyS': case 'ArrowDown': keys.s = true; break;
+                case 'KeyD': case 'ArrowRight': keys.d = true; break;
+                case 'ShiftLeft': keys.shift = true; break;
+                case 'KeyE': keys.e = true; interactAction(); break;
+                case 'KeyN': toggleNightVision(); break;
+            }
+        }
+
+        function onKeyUp(event) {
+            switch (event.code) {
+                case 'KeyW': case 'ArrowUp': keys.w = false; break;
+                case 'KeyA': case 'ArrowLeft': keys.a = false; break;
+                case 'KeyS': case 'ArrowDown': keys.s = false; break;
+                case 'KeyD': case 'ArrowRight': keys.d = false; break;
+                case 'ShiftLeft': keys.shift = false; break;
+                case 'KeyE': keys.e = false; break;
+            }
+        }
+
+        function onMouseMove(event) {
+            if (!isLocked) return;
+            const movementX = event.movementX || 0;
+            const movementY = event.movementY || 0;
+            
+            yawObject.rotation.y -= movementX * 0.002;
+            pitchObject.rotation.x -= movementY * 0.002;
+            // Clamp pitch to prevent looking too far up/down
+            pitchObject.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitchObject.rotation.x));
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function toggleNightVision() {
+            nightVision = !nightVision;
+            if (nightVision) {
+                scene.fog.color.setHex(0x0a220a);
+                ambientLight.color.setHex(0x44ff44);
+                ambientLight.intensity = 3.0;
+                document.getElementById('nv-overlay').style.display = 'block';
+            } else {
+                scene.fog.color.setHex(0x0a0c10);
+                ambientLight.color.setHex(0x202530);
+                ambientLight.intensity = 1.5;
+                document.getElementById('nv-overlay').style.display = 'none';
+            }
+        }
+
+        function interactAction() {
+            if(!isLocked || car.driving) return; 
+
+            const playerPos = yawObject.position;
+            
+            for (let i = 0; i < interactables.length; i++) {
+                const target = interactables[i];
+                if (!target.active) continue;
+
+                // Distance check
+                const dist = playerPos.distanceTo(target.position);
+                if (dist < 4.0) {
+                    if (target.type === 'doorbell' && !npc.active) {
+                        target.active = false; 
+                        uiPrompt.style.display = 'none';
+                        AudioSys.dingDong();
+
+                        doorbellsRung++;
+                        uiObjective.innerText = `Doorbells: ${doorbellsRung} / ${doorbellsNeeded}`;
+
+                        if (doorbellsRung === doorbellsNeeded) {
+                            // Unlock car & flash lights
+                            car.lights.forEach(l => {
+                                if (l.isSpotLight) l.intensity = 3.0;
+                                else l.emissiveIntensity = l.color.getHex() === 0xff0000 ? 1.0 : 2.0;
+                            });
+                            // Distant car honk
+                            AudioSys.playTone(300, 'square', 0.1, 0.2, 0); 
+                            AudioSys.playTone(300, 'square', 0.1, 0.2, 0.2);
+                        }
+
+                        setTimeout(() => {
+                            spawnNPC(target.position);
+                        }, 1500); 
+                        break;
+                    } else if (target.type === 'car') {
+                        if (doorbellsRung >= doorbellsNeeded) {
+                            target.active = false;
+                            startGetawaySequence();
+                        } else {
+                            uiPrompt.innerText = `Need ${doorbellsNeeded - doorbellsRung} more doorbells!`;
+                            setTimeout(() => { uiPrompt.style.display = 'none'; }, 2000);
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        function startGetawaySequence() {
+            isLocked = false;
+            document.exitPointerLock();
+            uiPrompt.style.display = 'none';
+            car.driving = true;
+            
+            // Move camera into car
+            yawObject.position.copy(car.group.position);
+            yawObject.position.y += 1.5;
+            yawObject.position.x -= 1.0; // Driver seat
+            yawObject.rotation.y = Math.PI; // Face backwards (down the street)
+            pitchObject.rotation.x = 0;
+            
+            // Show win screen after driving a bit
+            setTimeout(() => {
+                document.getElementById('win-screen').style.display = 'flex';
+            }, 3000);
+        }
+
+        function spawnNPC(spawnPosition) {
+            npc.active = true;
+            npc.state = 'CHASE';
+            // Spawn just outside the door
+            npc.mesh.position.copy(spawnPosition);
+            npc.mesh.position.y = 0; // Ground level for a person
+            npc.light.intensity = 3.0;
+            npc.ignoreCollisionTimer = 1.5; // Ignore collisions for 1.5s to walk away from the house
+        }
+
+        function resetGame() {
+            yawObject.position.set(0, 1.5, 0);
+            player.stamina = 100;
+            npc.active = false;
+            npc.mesh.position.y = -10;
+            npc.light.intensity = 0;
+            npc.ignoreCollisionTimer = 0;
+            doorbellsRung = 0;
+            uiObjective.innerText = `Doorbells: 0 / ${doorbellsNeeded}`;
+            
+            // Reset car lights
+            car.lights.forEach(l => {
+                if (l.isSpotLight) l.intensity = 0.0;
+                else l.emissiveIntensity = 0.0;
+            });
+
+            // Reset doors
+            interactables.forEach(d => d.active = true);
+        }
+
+        function checkCollisions(newPosition, radius) {
+            const checkRadius = radius || player.radius;
+            // Simplified AABB Collision for a kinematic controller
+            // Create a small bounding box
+            const checkBox = new THREE.Box3(
+                new THREE.Vector3(newPosition.x - checkRadius, 0, newPosition.z - checkRadius),
+                new THREE.Vector3(newPosition.x + checkRadius, 2, newPosition.z + checkRadius)
+            );
+
+            // Check against world boundaries (stay near street)
+            // Expanded boundaries to allow full exploration of the neighborhood up to the getaway car
+            if (newPosition.x < -25 || newPosition.x > 25 || newPosition.z > 80 || newPosition.z < -200) {
+                return { hit: true, box: null };
+            }
+
+            for (let i = 0; i < collisionBoxes.length; i++) {
+                if (checkBox.intersectsBox(collisionBoxes[i])) {
+                    return { hit: true, box: collisionBoxes[i] };
+                }
+            }
+            return { hit: false, box: null };
+        }
+
+        function updatePlayer(delta) {
+            if (!isLocked) return;
+
+            // 1. Calculate Velocity & Stamina
+            let currentSpeed = player.speed;
+            if (keys.shift && player.stamina > 0 && (keys.w || keys.a || keys.s || keys.d)) {
+                currentSpeed *= player.sprintMultiplier;
+                player.stamina -= delta * 30; // Drain
+            } else {
+                player.stamina += delta * 15; // Recover
+            }
+            player.stamina = Math.max(0, Math.min(100, player.stamina));
+            staminaBar.style.width = player.stamina + '%';
+            staminaBar.style.backgroundColor = player.stamina < 20 ? 'red' : 'white';
+
+            // 2. Intuitive Kinematic Movement Vectors (Relative to camera look direction)
+            player.direction.z = Number(keys.s) - Number(keys.w);
+            player.direction.x = Number(keys.d) - Number(keys.a);
+
+            if (player.direction.lengthSq() > 0) {
+                player.direction.normalize();
+
+                // Apply yaw rotation to movement vector so W always goes forward
+                const moveDir = player.direction.clone();
+                moveDir.applyAxisAngle(new THREE.Vector3(0, 1, 0), yawObject.rotation.y);
+
+                const newPos = yawObject.position.clone();
+                newPos.x += moveDir.x * currentSpeed * delta;
+                
+                // X Collision Check
+                if (!checkCollisions(newPos, player.radius).hit) {
+                    yawObject.position.x = newPos.x;
+                }
+                
+                newPos.x = yawObject.position.x; // Reset for Z check
+                newPos.z += moveDir.z * currentSpeed * delta;
+
+                // Z Collision Check
+                if (!checkCollisions(newPos, player.radius).hit) {
+                    yawObject.position.z = newPos.z;
+                }
+                
+                // Head bob
+                yawObject.position.y = 1.5 + Math.sin(performance.now() * 0.01) * 0.05 * (keys.shift ? 2 : 1);
+            }
+
+            // 3. Stealth / Trigger Volume Check
+            let currentlyHidden = false;
+            for(let i=0; i<bushes.length; i++) {
+                // Flat 2D distance to bush center
+                const dx = yawObject.position.x - bushes[i].center.x;
+                const dz = yawObject.position.z - bushes[i].center.z;
+                const dist = Math.sqrt(dx*dx + dz*dz);
+                
+                if (dist < bushes[i].radius) {
+                    currentlyHidden = true;
+                    break;
+                }
+            }
+
+            if (currentlyHidden !== player.isHidden) {
+                player.isHidden = currentlyHidden;
+                uiHidden.style.display = player.isHidden ? 'block' : 'none';
+                if(player.isHidden) {
+                    // Visual feedback: Screen darkens slightly when in bush
+                    scene.fog.color.setHex(nightVision ? 0x051105 : 0x050608);
+                    scene.background.setHex(nightVision ? 0x051105 : 0x050608);
+                } else {
+                    scene.fog.color.setHex(nightVision ? 0x0a220a : 0x0a0c10);
+                    scene.background.setHex(0x0a0c10); // Sky gradient handles the background mostly
+                }
+            }
+
+            // 4. Interaction Prompt Check
+            if(!car.driving) {
+                let canInteract = false;
+                let promptText = "";
+                for (let i = 0; i < interactables.length; i++) {
+                    if (!interactables[i].active) continue;
+                    if (yawObject.position.distanceTo(interactables[i].position) < 4.0) {
+                        if (interactables[i].type === 'doorbell' && !npc.active) {
+                            canInteract = true;
+                            promptText = "Press E to Ring Doorbell";
+                            break;
+                        } else if (interactables[i].type === 'car') {
+                            canInteract = true;
+                            promptText = "Press E to Escape";
+                            break;
+                        }
+                    }
+                }
+                if (canInteract) {
+                    uiPrompt.innerText = promptText;
+                    uiPrompt.style.display = 'block';
+                } else {
+                    uiPrompt.style.display = 'none';
+                }
+            } else {
+                uiPrompt.style.display = 'none';
+            }
+        }
+
+        function updateNPC(delta, time) {
+            if (!npc.active) return;
+
+            // Audio heartbeat pulse based on 2D distance
+            const distToPlayer2D = Math.hypot(npc.mesh.position.x - yawObject.position.x, npc.mesh.position.z - yawObject.position.z);
+            const pulseRate = Math.max(100, distToPlayer2D * 20); // Faster pulse when closer
+            if (time - npc.lastPulse > pulseRate) {
+                AudioSys.playChasePulse();
+                npc.lastPulse = time;
+                npc.light.intensity = 3.0 + Math.random();
+            } else {
+                npc.light.intensity = Math.max(0.5, npc.light.intensity - delta * 5);
+            }
+
+            // State Machine
+            if (npc.state === 'CHASE') {
+                if (player.isHidden) {
+                    // Line of sight broken
+                    npc.state = 'SEARCH';
+                    npc.searchTimer = 5.0; // Search for 5 seconds
+                    npc.target.copy(yawObject.position); // Go to last known location
+                } else {
+                    // Track player dynamically
+                    npc.target.copy(yawObject.position);
+                }
+            } else if (npc.state === 'SEARCH') {
+                npc.searchTimer -= delta;
+                if (!player.isHidden) {
+                    // Player emerged from bush!
+                    npc.state = 'CHASE';
+                } else if (npc.searchTimer <= 0) {
+                    // Give up
+                    npc.active = false;
+                    npc.mesh.position.y = -10;
+                    npc.light.intensity = 0;
+                    return;
+                }
+            }
+
+            // Movement logic (Direct vector pursuit avoiding Y axis)
+            const dir = new THREE.Vector3().subVectors(npc.target, npc.mesh.position);
+            dir.y = 0; 
+            if (dir.length() > 0.1) {
+                dir.normalize();
+                
+                // Rotate NPC to face movement direction
+                npc.mesh.rotation.y = Math.atan2(dir.x, dir.z);
+                
+                // Point spotlight forward
+                npc.light.target.position.copy(npc.mesh.position).add(dir.clone().multiplyScalar(5));
+                npc.light.target.position.y = 1.0;
+                
+                // Simple run animation (bobbing body parts)
+                npc.mesh.children[0].position.y = 0.7 + Math.sin(time * 0.015) * 0.05; // Body
+                npc.mesh.children[1].position.y = 1.6 + Math.sin(time * 0.015) * 0.05; // Head
+                
+                const moveSpeed = (npc.state === 'CHASE' ? npc.speed : npc.speed * 0.5) * delta;
+                
+                // --- Updated collision and bounce logic ---
+                let proposedDir = dir.clone().add(npc.bounce).normalize();
+                let moveX = proposedDir.x * moveSpeed;
+                let moveZ = proposedDir.z * moveSpeed;
+
+                if (npc.ignoreCollisionTimer > 0) {
+                    npc.ignoreCollisionTimer -= delta;
+                } else {
+                    let testX = new THREE.Vector3(npc.mesh.position.x + moveX, 0, npc.mesh.position.z);
+                    let colX = checkCollisions(testX, 0.4);
+                    if (colX.hit) moveX = 0;
+
+                    let testZ = new THREE.Vector3(npc.mesh.position.x, 0, npc.mesh.position.z + moveZ);
+                    let colZ = checkCollisions(testZ, 0.4);
+                    if (colZ.hit) moveZ = 0;
+
+                    if (colX.hit || colZ.hit) {
+                        let hitBox = colX.box || colZ.box;
+                        if (hitBox) {
+                            const boxCenter = new THREE.Vector3();
+                            hitBox.getCenter(boxCenter);
+                            const escape = new THREE.Vector3().subVectors(npc.mesh.position, boxCenter);
+                            escape.y = 0;
+                            escape.normalize();
+                            
+                            // Add some chaotic bounce to slide off flat surfaces and corners
+                            escape.x += (Math.random() - 0.5) * 1.5;
+                            escape.z += (Math.random() - 0.5) * 1.5;
+                            
+                            npc.bounce.add(escape.multiplyScalar(0.8));
+                        } else {
+                            npc.bounce.x += (Math.random() - 0.5) * 2;
+                            npc.bounce.z += (Math.random() - 0.5) * 2;
+                        }
+                    }
+                }
+
+                // Apply movement
+                npc.mesh.position.x += moveX;
+                npc.mesh.position.z += moveZ;
+
+                // Keep NPC somewhat on street/yards boundary (soft bounds)
+                npc.mesh.position.x = Math.max(-15, Math.min(15, npc.mesh.position.x));
+
+                npc.bounce.multiplyScalar(0.85); // Decay bounce momentum
+            }
+
+            // Kill Condition
+            if (npc.state === 'CHASE' && distToPlayer2D < 1.5 && !player.isHidden) {
+                triggerDeath();
+            }
+        }
+
+        function triggerDeath() {
+            document.exitPointerLock();
+            isLocked = false;
+            document.getElementById('death-screen').style.display = 'flex';
+            AudioSys.playCaught();
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const time = performance.now();
+            const delta = (time - prevTime) / 1000;
+            prevTime = time;
+
+            if (isLocked) {
+                updatePlayer(delta);
+                updateNPC(delta, time);
+            }
+
+            if (car.driving) {
+                car.group.position.z -= 15 * delta; // Drive forward (negative Z)
+                yawObject.position.z -= 15 * delta;
+            }
+
+            if (fireflies) {
+                fireflyClock += delta;
+                const positions = fireflies.geometry.attributes.position.array;
+                const phases = fireflies.geometry.attributes.phase.array;
+                for(let i=0; i<fireflyCount; i++) {
+                    // Bobbing and drifting motion mathematics
+                    positions[i*3 + 1] += Math.sin(fireflyClock * 2.0 + phases[i]) * 0.005;
+                    positions[i*3 + 0] += Math.cos(fireflyClock * 0.5 + phases[i]) * 0.008;
+                }
+                fireflies.geometry.attributes.position.needsUpdate = true;
+                
+                // Global pulsing glow effect
+                fireflies.material.opacity = 0.5 + Math.sin(fireflyClock * 3.0) * 0.4;
+            }
+
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>
