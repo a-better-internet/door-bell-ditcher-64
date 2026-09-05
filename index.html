@@ -637,6 +637,7 @@
         const interactables = [];
         const pursuers = [];
         const bins = [];
+        const occupancy = [];     // every placed object claims a circle of ground
         const flickers = [];      // TV-lit windows
         const timers = [];        // scheduled events
         let fireflies;
@@ -644,6 +645,8 @@
         let fireflyClock = 0;
 
         let ambientLight;
+        // Resolution safety valve: sampled once at startup on real hardware.
+        const perf = { frames: 0, elapsed: 0, checked: false };
         let nightVision = false;
         const car = { group: null, active: false, driving: false, lights: [] };
 
@@ -706,22 +709,6 @@
             uiSubtitle.innerText = text;
             uiSubtitle.style.opacity = '1';
             subtitleTimer = dur || 2.5;
-        }
-
-        // Crunchy low-res canvas text: house numbers, street signs, FOR SALE.
-        function makeTextTexture(text, bg, fg, w, h) {
-            const c = document.createElement('canvas');
-            c.width = w || 64; c.height = h || 32;
-            const g = c.getContext('2d');
-            g.fillStyle = bg; g.fillRect(0, 0, c.width, c.height);
-            g.fillStyle = fg;
-            g.font = 'bold ' + Math.floor(c.height * 0.62) + 'px "Courier New", monospace';
-            g.textAlign = 'center'; g.textBaseline = 'middle';
-            g.fillText(text, c.width / 2, c.height / 2 + 1);
-            const tex = new THREE.CanvasTexture(c);
-            tex.magFilter = THREE.NearestFilter;
-            tex.minFilter = THREE.NearestFilter;
-            return tex;
         }
 
         function heatInfo() {
@@ -816,7 +803,9 @@
             scene.background = new THREE.Color(0x0a0c10);
             scene.fog = new THREE.Fog(0x0a0c10, 8, 62);
 
-            camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 100);
+            // Far plane has to clear the sky dome, or the moon and stars get clipped
+            // away entirely; the fog still keeps the street itself short-sighted.
+            camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 620);
 
             pitchObject = new THREE.Object3D();
             pitchObject.add(camera);
@@ -888,42 +877,230 @@
         const CHIMES = ['DINGDONG', 'BUZZER', 'BROKEN', 'WESTMINSTER', 'ELECTRONIC'];
         const HOUSE_STYLES = ['RANCH', 'TWOSTORY', 'SPLIT', 'BUNGALOW'];
 
+        // =====================================================================
+        // PROCEDURAL TEXTURES
+        // Small canvases, nearest-filtered up close and mip-mapped at distance:
+        // the way a cartridge-era renderer handled a wall.
+        // =====================================================================
+        const TEXCANVAS = {};
+
+        function texCanvas(size) {
+            const c = document.createElement('canvas');
+            c.width = c.height = size || 32;
+            return c;
+        }
+        function shade(hex, mul) {
+            const r = Math.max(0, Math.min(255, Math.round(((hex >> 16) & 255) * mul)));
+            const g = Math.max(0, Math.min(255, Math.round(((hex >> 8) & 255) * mul)));
+            const b = Math.max(0, Math.min(255, Math.round((hex & 255) * mul)));
+            return 'rgb(' + r + ',' + g + ',' + b + ')';
+        }
+        function speckle(g, hex, count, size) {
+            for (let i = 0; i < count; i++) {
+                g.fillStyle = shade(hex, 0.82 + Math.random() * 0.36);
+                g.fillRect(Math.floor(Math.random() * size), Math.floor(Math.random() * size), 1, 1);
+            }
+        }
+
+        // Horizontal clapboard: a lit face and a shadow under every lap.
+        function drawSiding(hex) {
+            const c = texCanvas(32), g = c.getContext('2d');
+            g.fillStyle = shade(hex, 1); g.fillRect(0, 0, 32, 32);
+            for (let y = 0; y < 32; y += 8) {
+                g.fillStyle = shade(hex, 1.16); g.fillRect(0, y, 32, 2);
+                g.fillStyle = shade(hex, 0.58); g.fillRect(0, y + 7, 32, 1);
+            }
+            speckle(g, hex, 26, 32);
+            return c;
+        }
+
+        // Running-bond brick with pale mortar.
+        function drawBrick(hex) {
+            const c = texCanvas(32), g = c.getContext('2d');
+            g.fillStyle = shade(hex, 0.55); g.fillRect(0, 0, 32, 32);   // mortar
+            for (let row = 0; row < 4; row++) {
+                const y = row * 8, off = (row % 2) * 8;
+                for (let bx = -8; bx < 32; bx += 16) {
+                    g.fillStyle = shade(hex, 0.85 + Math.random() * 0.3);
+                    g.fillRect(bx + off + 1, y + 1, 14, 6);
+                }
+            }
+            return c;
+        }
+
+        // Asphalt shingle tabs.
+        function drawShingle(hex) {
+            const c = texCanvas(32), g = c.getContext('2d');
+            g.fillStyle = shade(hex, 1); g.fillRect(0, 0, 32, 32);
+            for (let row = 0; row < 4; row++) {
+                const y = row * 8, off = (row % 2) * 5;
+                g.fillStyle = shade(hex, 1.18); g.fillRect(0, y, 32, 1);
+                g.fillStyle = shade(hex, 0.5);
+                for (let tx = off; tx < 32; tx += 10) g.fillRect(tx, y + 1, 1, 7);
+            }
+            speckle(g, hex, 30, 32);
+            return c;
+        }
+
+        function drawGrass(hex) {
+            const c = texCanvas(32), g = c.getContext('2d');
+            g.fillStyle = shade(hex, 1); g.fillRect(0, 0, 32, 32);
+            for (let i = 0; i < 90; i++) {
+                g.fillStyle = shade(hex, 0.7 + Math.random() * 0.55);
+                g.fillRect(Math.floor(Math.random() * 32), Math.floor(Math.random() * 32), 1, 1 + (Math.random() > 0.7 ? 1 : 0));
+            }
+            for (let i = 0; i < 5; i++) {
+                g.fillStyle = shade(hex, 0.78);
+                g.fillRect(Math.floor(Math.random() * 28), Math.floor(Math.random() * 28), 4, 3);
+            }
+            return c;
+        }
+
+        function drawAsphalt(hex) {
+            const c = texCanvas(32), g = c.getContext('2d');
+            g.fillStyle = shade(hex, 1); g.fillRect(0, 0, 32, 32);
+            speckle(g, hex, 220, 32);
+            for (let i = 0; i < 3; i++) {          // patched cracks
+                g.fillStyle = shade(hex, 0.68);
+                g.fillRect(Math.floor(Math.random() * 30), Math.floor(Math.random() * 30), 1, 2 + Math.floor(Math.random() * 4));
+            }
+            return c;
+        }
+
+        // Poured slabs: joints along two edges so tiling makes a grid.
+        function drawConcrete(hex) {
+            const c = texCanvas(32), g = c.getContext('2d');
+            g.fillStyle = shade(hex, 1); g.fillRect(0, 0, 32, 32);
+            speckle(g, hex, 120, 32);
+            g.fillStyle = shade(hex, 0.62);
+            g.fillRect(0, 0, 32, 1);
+            g.fillRect(0, 0, 1, 32);
+            return c;
+        }
+
+        function drawBark(hex) {
+            const c = texCanvas(32), g = c.getContext('2d');
+            g.fillStyle = shade(hex, 1); g.fillRect(0, 0, 32, 32);
+            for (let i = 0; i < 22; i++) {
+                g.fillStyle = shade(hex, 0.6 + Math.random() * 0.7);
+                g.fillRect(Math.floor(Math.random() * 32), 0, 1 + (Math.random() > 0.6 ? 1 : 0), 32);
+            }
+            return c;
+        }
+
+        function drawLeaves(hex) {
+            const c = texCanvas(32), g = c.getContext('2d');
+            g.fillStyle = shade(hex, 1); g.fillRect(0, 0, 32, 32);
+            for (let i = 0; i < 150; i++) {
+                g.fillStyle = shade(hex, 0.62 + Math.random() * 0.7);
+                g.fillRect(Math.floor(Math.random() * 32), Math.floor(Math.random() * 32), 2, 2);
+            }
+            return c;
+        }
+
+        // Two sunken panels, the way a front door is built.
+        function drawDoor(hex) {
+            const c = texCanvas(32), g = c.getContext('2d');
+            g.fillStyle = shade(hex, 1); g.fillRect(0, 0, 32, 32);
+            [[6, 4, 20, 10], [6, 18, 20, 10]].forEach(p => {
+                g.fillStyle = shade(hex, 0.7);
+                g.fillRect(p[0], p[1], p[2], p[3]);
+                g.fillStyle = shade(hex, 1.2);
+                g.fillRect(p[0] + 1, p[1] + 1, p[2] - 2, p[3] - 2);
+                g.fillStyle = shade(hex, 0.88);
+                g.fillRect(p[0] + 3, p[1] + 2, p[2] - 6, p[3] - 4);
+            });
+            return c;
+        }
+
+        // Ribbed panels: garage doors and wheelie bins.
+        function drawRibs(hex, horizontal) {
+            const c = texCanvas(32), g = c.getContext('2d');
+            g.fillStyle = shade(hex, 1); g.fillRect(0, 0, 32, 32);
+            for (let i = 0; i < 32; i += 6) {
+                g.fillStyle = shade(hex, 1.15);
+                if (horizontal) g.fillRect(0, i, 32, 2); else g.fillRect(i, 0, 2, 32);
+                g.fillStyle = shade(hex, 0.66);
+                if (horizontal) g.fillRect(0, i + 4, 32, 1); else g.fillRect(i + 4, 0, 1, 32);
+            }
+            return c;
+        }
+
+        function tex(canvas, rx, ry) {
+            const t = new THREE.CanvasTexture(canvas);
+            t.colorSpace = THREE.SRGBColorSpace;
+            t.wrapS = t.wrapT = THREE.RepeatWrapping;
+            t.magFilter = THREE.NearestFilter;               // crunchy up close
+            t.minFilter = THREE.LinearMipmapLinearFilter;    // clean at distance
+            t.repeat.set(rx || 1, ry || 1);
+            return t;
+        }
+
         // Shared materials
         const MAT = {};
 
         function buildEnvironment() {
-            MAT.ground    = new THREE.MeshLambertMaterial({ color: 0x23361f, flatShading: true });
-            MAT.lawn      = new THREE.MeshLambertMaterial({ color: 0x33512f, flatShading: true });
-            MAT.road      = new THREE.MeshLambertMaterial({ color: 0x343438, flatShading: true });
-            MAT.sidewalk  = new THREE.MeshLambertMaterial({ color: 0x565650, flatShading: true });
-            MAT.concrete  = new THREE.MeshLambertMaterial({ color: 0x4a4a4c, flatShading: true });
-            MAT.door      = new THREE.MeshLambertMaterial({ color: 0x5a3a2a, flatShading: true });
-            MAT.bush      = new THREE.MeshLambertMaterial({ color: 0x1f4526, flatShading: true });
+            // Base canvases, reused by every material that tiles them
+            TEXCANVAS.grass    = drawGrass(0x33512f);
+            TEXCANVAS.ground   = drawGrass(0x23361f);
+            TEXCANVAS.asphalt  = drawAsphalt(0x343438);
+            TEXCANVAS.concrete = drawConcrete(0x565650);
+            TEXCANVAS.bark     = drawBark(0x2a1f16);
+            TEXCANVAS.leaves   = drawLeaves(0x1f4526);
+            TEXCANVAS.canopy   = drawLeaves(0x1a3a1e);
+            TEXCANVAS.door     = drawDoor(0x5a3a2a);
+            TEXCANVAS.binRibs  = drawRibs(0x1f3a2a, false);
+            TEXCANVAS.garage   = drawRibs(0x555a60, true);
+            TEXCANVAS.plank    = drawSiding(0x4a3b2a);
+
+            MAT.ground    = new THREE.MeshLambertMaterial({ map: tex(TEXCANVAS.ground, 150, 150) });
+            MAT.lawn      = new THREE.MeshLambertMaterial({ map: tex(TEXCANVAS.grass, 38, 120) });
+            MAT.road      = new THREE.MeshLambertMaterial({ map: tex(TEXCANVAS.asphalt, 6, 150) });
+            MAT.sidewalk  = new THREE.MeshLambertMaterial({ map: tex(TEXCANVAS.concrete, 1, 150) });
+            MAT.walk      = new THREE.MeshLambertMaterial({ map: tex(TEXCANVAS.concrete, 5, 1) });
+            MAT.concrete  = new THREE.MeshLambertMaterial({ map: tex(TEXCANVAS.concrete, 5, 2) });
+            MAT.door      = new THREE.MeshLambertMaterial({ map: tex(TEXCANVAS.door, 1, 1) });
+            MAT.bush      = new THREE.MeshLambertMaterial({ map: tex(TEXCANVAS.leaves, 1, 1), flatShading: true });
             MAT.mailbox   = new THREE.MeshLambertMaterial({ color: 0x444455, flatShading: true });
             MAT.dark      = new THREE.MeshLambertMaterial({ color: 0x111111, flatShading: true });
             MAT.metal     = new THREE.MeshLambertMaterial({ color: 0x555a60, flatShading: true });
-            MAT.wood      = new THREE.MeshLambertMaterial({ color: 0x4a3b2a, flatShading: true });
+            MAT.garage    = new THREE.MeshLambertMaterial({ map: tex(TEXCANVAS.garage, 3, 1) });
+            MAT.wood      = new THREE.MeshLambertMaterial({ map: tex(TEXCANVAS.plank, 1, 2) });
             MAT.picket    = new THREE.MeshLambertMaterial({ color: 0x6b6558, flatShading: true });
             MAT.trim      = new THREE.MeshLambertMaterial({ color: 0x8c8877, flatShading: true });
-            MAT.trunk     = new THREE.MeshLambertMaterial({ color: 0x2a1f16, flatShading: true });
-            MAT.leaves    = new THREE.MeshLambertMaterial({ color: 0x1a3a1e, flatShading: true });
+            MAT.trunk     = new THREE.MeshLambertMaterial({ map: tex(TEXCANVAS.bark, 2, 2) });
+            MAT.leaves    = new THREE.MeshLambertMaterial({ map: tex(TEXCANVAS.canopy, 1, 1), flatShading: true });
             MAT.shadow    = new THREE.MeshBasicMaterial({ color: 0x0a0a0c });
-            MAT.plastic   = new THREE.MeshLambertMaterial({ color: 0x1f3a2a, flatShading: true });
+            MAT.plastic   = new THREE.MeshLambertMaterial({ map: tex(TEXCANVAS.binRibs, 3, 1) });
 
-            // Sky gradient
-            const skyGeo = new THREE.SphereGeometry(200, 16, 16);
+            // Sky: a three-stop gradient with sodium light-pollution glow
+            // sitting on the horizon where the rest of the town is.
+            const skyGeo = new THREE.SphereGeometry(200, 24, 18);
             const colors = [];
             const pos = skyGeo.attributes.position;
-            const color = new THREE.Color();
+            const horizon = new THREE.Color(0x18223a);
+            const middle  = new THREE.Color(0x0b1122);
+            const zenith  = new THREE.Color(0x03050c);
+            const glow    = new THREE.Color(0x3a2a16);
+            const c1 = new THREE.Color(), c2 = new THREE.Color();
             for (let i = 0; i < pos.count; i++) {
-                const y = pos.getY(i);
-                const t = Math.max(0, Math.min(1, (y + 50) / 100));
-                color.lerpColors(new THREE.Color(0x0a1525), new THREE.Color(0x000000), t);
-                colors.push(color.r, color.g, color.b);
+                const y = pos.getY(i) / 200;
+                const t = Math.max(0, Math.min(1, y));
+                if (t < 0.28) c1.lerpColors(horizon, middle, t / 0.28);
+                else c1.lerpColors(middle, zenith, (t - 0.28) / 0.72);
+                if (y < 0) c1.multiplyScalar(0.45);       // below the horizon
+                // Town glow, strongest low in the sky toward +Z
+                const dz = pos.getZ(i) / 200;
+                const amount = Math.max(0, 1 - Math.abs(y) * 3.2) * Math.max(0, dz) * 0.9;
+                c2.copy(glow).multiplyScalar(amount);
+                c1.add(c2);
+                colors.push(c1.r, c1.g, c1.b);
             }
             skyGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-            const skyMat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false });
-            scene.add(new THREE.Mesh(skyGeo, skyMat));
+            const skyMat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false });
+            const skyMesh = new THREE.Mesh(skyGeo, skyMat);
+            skyMesh.renderOrder = -10;    // painted first, occludes nothing
+            scene.add(skyMesh);
 
             // Ground. The play area gets a dense grid so porch lights, headlights
             // and searchlights actually pool on the lawn (chunky N64 vertex light).
@@ -971,6 +1148,10 @@
             while (roster.length < numHouses * 2) roster.push(pick(keys));
             shuffle(roster);
 
+            // Poles, lamps and hydrants claim their ground before any yard
+            // is planted around them.
+            buildStreetFurniture(startZ, numHouses * houseSpacing);
+
             for (let i = 0; i < numHouses; i++) {
                 const zPos = startZ + (i * houseSpacing);
                 // Set back from the curb so the front yards have room to read.
@@ -978,7 +1159,6 @@
                 createHouse(21 + rand(-1, 1), zPos + rand(-2, 2), -1, roster[i * 2 + 1], 1401 + i * 2);
             }
 
-            buildStreetFurniture(startZ, numHouses * houseSpacing);
             scatterBushes(startZ);
             buildGetawayCar(startZ);
             buildAmbience();
@@ -1025,9 +1205,15 @@
                 default:         W = rand(9.5, 11.5); H = rand(3.3, 3.7); D = rand(12, 15); roofType = 'GABLE'; roofH = rand(1.8, 2.4); break;
             }
 
+            // Every house gets its own siding or brick, woven at build time.
             const hue = Math.random();
-            const matWalls = new THREE.MeshLambertMaterial({ color: new THREE.Color().setHSL(hue, 0.08 + Math.random() * 0.18, 0.20 + Math.random() * 0.24), flatShading: true });
-            const matRoof = new THREE.MeshLambertMaterial({ color: new THREE.Color().setHSL(Math.random(), 0.1, 0.12 + Math.random() * 0.16), flatShading: true });
+            const wallHex = new THREE.Color().setHSL(hue, 0.08 + Math.random() * 0.18, 0.20 + Math.random() * 0.24).getHex();
+            const roofHex = new THREE.Color().setHSL(Math.random(), 0.1, 0.12 + Math.random() * 0.16).getHex();
+            const isBrick = Math.random() > 0.72;
+            const matWalls = new THREE.MeshLambertMaterial({
+                map: tex(isBrick ? drawBrick(wallHex) : drawSiding(wallHex), isBrick ? D * 0.6 : D * 0.5, isBrick ? H * 0.6 : H)
+            });
+            const matRoof = new THREE.MeshLambertMaterial({ map: tex(drawShingle(roofHex), 4, 2) });
 
             const house = {
                 id: houses.length, address: address, archetype: archetypeKey, style: style,
@@ -1103,16 +1289,6 @@
             step.position.set(doorX + dir * 0.5, 0.08, doorZ);
             house.group.add(step);
 
-            // House number, beside the door where a house number goes
-            const plaqueTex = makeTextTexture(String(address), '#15150f', '#8f8a72', 64, 24);
-            const plaque = new THREE.Mesh(
-                new THREE.PlaneGeometry(0.55, 0.22),
-                new THREE.MeshBasicMaterial({ map: plaqueTex })
-            );
-            plaque.position.set(doorX + dir * 0.13, 1.85, onFace(doorZ - 0.95, 0.3));
-            plaque.rotation.y = dir === 1 ? Math.PI / 2 : -Math.PI / 2;
-            house.group.add(plaque);
-
             // ---- Windows (each one is its own room light) -----------------
             const startLit = arche.litAtNight && Math.random() > 0.15;
             function addWindow(wy, wz, ww, wh, room, forceOn) {
@@ -1175,27 +1351,32 @@
             house.porch = { mesh: pLightMesh, mat: pLightMat, light: pLight, on: porchOn };
 
             // ---- Walkway + driveway --------------------------------------
-            const sidewalkX = -7 * dir;
+            const sidewalkX = -8 * dir;
             const walkwayLength = Math.abs(doorX - sidewalkX);
-            const walkway = new THREE.Mesh(new THREE.PlaneGeometry(walkwayLength, 1.5, 10, 2), MAT.sidewalk);
+            const walkway = new THREE.Mesh(new THREE.PlaneGeometry(walkwayLength, 1.5, 10, 2), MAT.walk);
             walkway.rotation.x = -Math.PI / 2;
             walkway.position.set((doorX + sidewalkX) / 2, 0.03, doorZ);
             house.group.add(walkway);
+            occupyLine(doorX, doorZ, sidewalkX, doorZ, 1.1);
 
             let driveZ = null;
             if (style === 'SPLIT' || Math.random() > 0.5) {
                 driveZ = z - D / 2 - rand(1.6, 2.6);
-                const drive = new THREE.Mesh(new THREE.PlaneGeometry(walkwayLength + 3, 3.4, 10, 3), MAT.concrete);
+                // Runs from the house down to the curb and stops there.
+                const curbX = -6 * dir;
+                const driveLen = Math.abs(wallX - curbX);
+                const drive = new THREE.Mesh(new THREE.PlaneGeometry(driveLen, 3.4, 10, 3), MAT.concrete);
                 drive.rotation.x = -Math.PI / 2;
-                drive.position.set((doorX + sidewalkX) / 2 + dir * 1.4, 0.025, driveZ);
+                drive.position.set((wallX + curbX) / 2, 0.025, driveZ);
                 house.group.add(drive);
+                occupyLine(wallX, driveZ, curbX, driveZ, 1.8);
 
                 if (style === 'SPLIT') {
                     const garage = new THREE.Mesh(new THREE.BoxGeometry(W * 0.5, 2.5, 5), matWalls);
                     garage.position.set(x + dir * (W * 0.3), 1.25, driveZ);
                     house.group.add(garage);
                     addCollision(garage);
-                    const gDoor = new THREE.Mesh(new THREE.BoxGeometry(0.18, 2.1, 4.2), MAT.metal);
+                    const gDoor = new THREE.Mesh(new THREE.BoxGeometry(0.18, 2.1, 4.2), MAT.garage);
                     gDoor.position.set(x + dir * (W * 0.3 + W * 0.25), 1.05, driveZ);
                     house.group.add(gDoor);
                 }
@@ -1203,7 +1384,9 @@
 
             // ---- Mailbox, out at the curb where the mail goes -------------
             const mbX = (x > 0 ? 8.6 : -8.6);
-            const mbZ = doorZ + rand(-0.6, 0.6);
+            let mbZ = doorZ + rand(-0.6, 0.6);
+            for (let t = 0; t < 8 && !isClear(mbX, mbZ, 0.4, 0.5); t++) mbZ = doorZ + rand(-2.5, 2.5);
+            occupy(mbX, mbZ, 0.4);
             const mbPost = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.0, 0.12), MAT.mailbox);
             mbPost.position.set(mbX, 0.5, mbZ);
             const mbBox = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.3, 0.5), MAT.mailbox);
@@ -1260,36 +1443,12 @@
             const wallX = x + dir * (W / 2);
             const bushGeom = new THREE.DodecahedronGeometry(1.5, 0);
 
-            // Foundation shrubs: a row along the front wall, skipping the walk
-            const shrubs = 2 + Math.floor(Math.random() * 3);
-            for (let b = 0; b < shrubs; b++) {
-                const bx = wallX + dir * rand(1.1, 2.0);
-                const bz = z + rand(-D * 0.42, D * 0.42);
-                if (blocksWalkway(bx, bz) || Math.abs(bz - doorZ) < 1.6) continue;
-                addBush(bx, bz, bushGeom, rand(0.55, 0.85));
-            }
+            // Biggest claims go down first, then smaller things fill the gaps.
 
-            // Cover in the gap between this house and the next one along
-            for (let b = 0; b < 2; b++) {
-                const side = Math.random() > 0.5 ? 1 : -1;
-                const bz = z + side * (D / 2 + rand(1.5, 4.0));
-                const bx = x + rand(-W * 0.45, W * 0.45) + dir * rand(0, 3);
-                if (blocksWalkway(bx, bz)) continue;
-                addBush(bx, bz, bushGeom, rand(0.7, 1.1));
-            }
-
-            // A tree, out of the way of the walk
-            if (Math.random() > 0.45) {
-                const tx = wallX + dir * rand(2.5, 5.5);
-                const tz = z + rand(-D * 0.5, D * 0.5);
-                if (!blocksWalkway(tx, tz) && !insideFootprint(tx, tz, 0.5)) makeTree(tx, tz, house.group);
-            }
-
-            // Property-line fence: posts and two rails, evenly spaced
+            // ---- Property-line fence: posts and two rails, evenly spaced
             if (Math.random() > 0.62) {
                 const fenceZ = z + (D / 2) + rand(2.0, 3.0);
-                const rustic = Math.random() > 0.5;
-                const mat = rustic ? MAT.wood : MAT.picket;
+                const mat = Math.random() > 0.5 ? MAT.wood : MAT.picket;
                 const from = -8.2 * dir;
                 const to = wallX + dir * 0.5;
                 const span = Math.abs(to - from);
@@ -1305,36 +1464,97 @@
                     rail.position.set((from + to) / 2, h, fenceZ);
                     house.group.add(rail);
                 });
+                occupyLine(from, fenceZ, to, fenceZ, 0.35);
             }
 
-            // At most one piece of lawn furniture, off to the side
-            if (Math.random() > 0.55) {
-                const kind = pick(['GNOME', 'FLAMINGO', 'HOOP', 'SALE', 'SWING']);
-                for (let attempt = 0; attempt < 10; attempt++) {
-                    const px = wallX + dir * rand(2.0, 5.5);
-                    const pz = z + rand(-D * 0.5, D * 0.5);
-                    if (blocksWalkway(px, pz) || Math.abs(pz - doorZ) < 3.0) continue;
-                    makeProp(kind, px, pz, house);
-                    break;
-                }
-            }
-
-            // Trash bins at the curb - knock one over and the whole street hears it
+            // ---- Trash bins at the curb
             if (Math.random() > 0.5) {
                 const n = Math.random() > 0.65 ? 2 : 1;
+                const baseZ = (driveZ !== null ? driveZ : z + D * 0.4);
                 for (let i = 0; i < n; i++) {
-                    const bx = -8.4 * dir;
-                    const bz = (driveZ !== null ? driveZ : z + D * 0.4) + i * 1.1 + rand(-0.3, 0.3);
+                    const spot = findSpot(-8.4 * dir, baseZ + i * 1.1, 0.25, 2.0, 0.45, 10);
+                    if (!spot) continue;
                     const bin = new THREE.Group();
-                    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.29, 1.0, 8), MAT.plastic);
+                    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.29, 1.0, 10), MAT.plastic);
                     body.position.y = 0.5; bin.add(body);
-                    const lid = new THREE.Mesh(new THREE.CylinderGeometry(0.37, 0.37, 0.09, 8), MAT.dark);
+                    const lid = new THREE.Mesh(new THREE.CylinderGeometry(0.37, 0.37, 0.09, 10), MAT.dark);
                     lid.position.y = 1.04; bin.add(lid);
-                    bin.position.set(bx, 0, bz);
+                    bin.position.set(spot.x, 0, spot.z);
                     scene.add(bin);
-                    bins.push({ mesh: bin, x: bx, z: bz, knocked: false });
+                    occupy(spot.x, spot.z, 0.45);
+                    bins.push({ mesh: bin, x: spot.x, z: spot.z, knocked: false });
                 }
             }
+
+            // ---- A tree, well clear of the walk
+            if (Math.random() > 0.45) {
+                const spot = findSpot(wallX + dir * 3.6, z, 1.6, D * 0.45, 2.0, 18);
+                if (spot) makeTree(spot.x, spot.z, house.group);
+            }
+
+            // ---- At most one piece of lawn furniture
+            if (Math.random() > 0.55) {
+                const kind = pick(['GNOME', 'FLAMINGO', 'HOOP', 'PLANTER', 'SWING']);
+                const r = PROP_RADIUS[kind] || 0.5;
+                const spot = findSpot(wallX + dir * 3.4, z, 1.8, D * 0.45, r, 18);
+                if (spot && Math.abs(spot.z - doorZ) > 2.2) makeProp(kind, spot.x, spot.z, house);
+            }
+
+            // ---- Foundation shrubs along the front wall
+            const shrubs = 2 + Math.floor(Math.random() * 3);
+            for (let b = 0; b < shrubs; b++) {
+                const scale = rand(0.5, 0.8);
+                const spot = findSpot(wallX + dir * 1.5, z + rand(-D * 0.4, D * 0.4), 0.5, 1.6, 1.5 * scale, 10);
+                if (spot && Math.abs(spot.z - doorZ) > 1.5) addBush(spot.x, spot.z, bushGeom, scale);
+            }
+
+            // ---- Cover in the gap between this house and the next one along
+            for (let b = 0; b < 2; b++) {
+                const side = Math.random() > 0.5 ? 1 : -1;
+                const scale = rand(0.7, 1.05);
+                const spot = findSpot(x + dir * rand(0, 3), z + side * (D / 2 + 2.6), W * 0.4, 1.6, 1.5 * scale, 12);
+                if (spot) addBush(spot.x, spot.z, bushGeom, scale);
+            }
+        }
+
+        const PROP_RADIUS = { GNOME: 0.3, FLAMINGO: 0.3, PLANTER: 0.4, HOOP: 0.7, SWING: 1.7 };
+
+        // ---------------------------------------------------------------
+        // PLACEMENT RULES
+        // Everything that gets set down on this street claims a circle, and
+        // nothing may be placed overlapping a claim. No more swing sets
+        // growing out of hedges.
+        // ---------------------------------------------------------------
+        function occupy(px, pz, r) {
+            occupancy.push({ x: px, z: pz, r: r });
+        }
+        function isClear(px, pz, r, pad) {
+            const p = pad === undefined ? 0.6 : pad;
+            for (let i = 0; i < occupancy.length; i++) {
+                const o = occupancy[i];
+                const dx = px - o.x, dz = pz - o.z;
+                if (dx * dx + dz * dz < (o.r + r + p) * (o.r + r + p)) return false;
+            }
+            return true;
+        }
+        // Claims a strip of ground, for driveways, walks and fence lines.
+        function occupyLine(x1, z1, x2, z2, r) {
+            const steps = Math.max(1, Math.round(Math.hypot(x2 - x1, z2 - z1) / (r * 1.5)));
+            for (let i = 0; i <= steps; i++) {
+                occupy(x1 + (x2 - x1) * (i / steps), z1 + (z2 - z1) * (i / steps), r);
+            }
+        }
+        // Finds a spot that clears everything, or gives up.
+        function findSpot(cx, cz, spreadX, spreadZ, r, tries) {
+            for (let i = 0; i < (tries || 14); i++) {
+                const px = cx + rand(-spreadX, spreadX);
+                const pz = cz + rand(-spreadZ, spreadZ);
+                if (blocksWalkway(px, pz)) continue;
+                if (insideFootprint(px, pz, r + 0.3)) continue;
+                if (!isClear(px, pz, r)) continue;
+                return { x: px, z: pz };
+            }
+            return null;
         }
 
         // Nothing decorative belongs inside somebody's living room.
@@ -1359,6 +1579,7 @@
             // Concealment reaches a little past the leaves so pressing into a
             // hedge counts as being in it.
             bushes.push({ center: bush.position.clone(), radius: 1.5 + 1.7 * scale, mesh: bush });
+            occupy(bx, bz, 1.5 * scale);
             return bush;
         }
 
@@ -1383,6 +1604,7 @@
             box.min.x += tx - 0.1; box.max.x += tx + 0.1;
             box.min.z += tz - 0.1; box.max.z += tz + 0.1;
             collisionBoxes.push(box);
+            occupy(tx, tz, 1.9);
             return tree;
         }
 
@@ -1431,20 +1653,18 @@
                     seat.position.set(0, 0.6, 0); g.add(seat);
                     break;
                 }
-                default: { // SALE
-                    const post = new THREE.Mesh(new THREE.BoxGeometry(0.07, 1.2, 0.07), MAT.wood);
-                    post.position.y = 0.6; g.add(post);
-                    const tex = makeTextTexture('FOR SALE', '#cfcabc', '#7d1f1f', 96, 40);
-                    const sign = new THREE.Mesh(new THREE.PlaneGeometry(0.95, 0.4), new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide }));
-                    sign.position.y = 1.05;
-                    sign.rotation.y = house.dir === 1 ? Math.PI / 2 : -Math.PI / 2;
-                    g.add(sign);
+                default: { // PLANTER
+                    const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.22, 0.42, 8), new THREE.MeshLambertMaterial({ color: 0x6b4a34, flatShading: true }));
+                    pot.position.y = 0.21; g.add(pot);
+                    const plant = new THREE.Mesh(new THREE.DodecahedronGeometry(0.32, 0), MAT.bush);
+                    plant.position.y = 0.6; g.add(plant);
                     break;
                 }
             }
             g.position.set(px, 0, pz);
-            if (kind !== 'SALE') g.rotation.y = rand(0, Math.PI * 2);
+            g.rotation.y = rand(0, Math.PI * 2);
             house.group.add(g);
+            occupy(px, pz, PROP_RADIUS[kind] || 0.5);
             if (kind === 'HOOP' || kind === 'SWING') addCollision(g, 0.15);
         }
 
@@ -1487,6 +1707,7 @@
                 cross.position.set(side, 8.2, z);
                 scene.add(cross);
                 addCollision(pole, 0.05);
+                occupy(side, z, 0.6);
 
                 const top = new THREE.Vector3(side, 8.2, z);
                 if (prevTop) {
@@ -1511,16 +1732,6 @@
                 prevTop = top;
             }
 
-            // Street sign where you start
-            const signPole = new THREE.Mesh(new THREE.BoxGeometry(0.12, 3.2, 0.12), MAT.metal);
-            signPole.position.set(8.4, 1.6, 30);
-            scene.add(signPole);
-            const signTex = makeTextTexture('MAPLE CT', '#1d3b22', '#dfe6dd', 128, 32);
-            const sign = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 0.55), new THREE.MeshBasicMaterial({ map: signTex, side: THREE.DoubleSide }));
-            sign.position.set(8.4, 3.1, 30);
-            sign.rotation.y = -Math.PI / 2;
-            scene.add(sign);
-
             // Fire hydrant
             const hyd = new THREE.Group();
             const hb = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.24, 0.7, 8), new THREE.MeshLambertMaterial({ color: 0x8a2b1f, flatShading: true }));
@@ -1529,6 +1740,7 @@
             hc.position.y = 0.72; hyd.add(hc);
             hyd.position.set(-8.3, 0, startZ + 12);
             scene.add(hyd);
+            occupy(-8.3, startZ + 12, 0.45);
 
             // Lamp posts every few lots
             for (let i = 0; i < 6; i++) {
@@ -1545,6 +1757,7 @@
                 const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.35, 0.7), lampMat);
                 lamp.position.set(lx + (lx < 0 ? 1.2 : -1.2), 5.8, lz);
                 scene.add(lamp);
+                occupy(lx, lz, 0.7);
                 const light = new THREE.PointLight(0xffaa55, 1.3, 22);
                 light.position.copy(lamp.position);
                 light.position.y = 5.6;
@@ -1558,19 +1771,16 @@
         function scatterBushes(startZ) {
             const bushGeom = new THREE.DodecahedronGeometry(1.5, 0);
             for (let i = 0; i < 80; i++) {
-                let bx, bz, ok = false, attempts = 0;
-                while (!ok && attempts < 20) {
-                    bx = (Math.random() > 0.5 ? 1 : -1) * rand(9.0, 30);
-                    bz = startZ + Math.random() * 165 - 5;
-                    attempts++;
-                    ok = !blocksWalkway(bx, bz) && !insideFootprint(bx, bz, 0.8);
-                }
-                if (!ok) continue;
-                addBush(bx, bz, bushGeom, rand(0.7, 1.2));
+                const scale = rand(0.7, 1.2);
+                const side = Math.random() > 0.5 ? 1 : -1;
+                const spot = findSpot(side * 19, startZ + Math.random() * 165 - 5, 11, 3, 1.5 * scale, 12);
+                if (spot) addBush(spot.x, spot.z, bushGeom, scale);
             }
             // Hedgerow cover along the last stretch toward the getaway car
             for (let z = startZ - 66; z < startZ - 6; z += 5.0) {
-                addBush((Math.random() > 0.5 ? 1 : -1) * rand(9, 14), z + rand(-1.5, 1.5), bushGeom, rand(0.9, 1.2));
+                const scale = rand(0.9, 1.2);
+                const spot = findSpot((Math.random() > 0.5 ? 1 : -1) * 11.5, z, 2.5, 1.5, 1.5 * scale, 10);
+                if (spot) addBush(spot.x, spot.z, bushGeom, scale);
             }
         }
 
@@ -1609,19 +1819,155 @@
             });
         }
 
+        // Everything overhead: stars that wheel, a haze of Milky Way, cloud
+        // sliding through, a treeline on the horizon and a moon with a halo.
+        let skyGroup, cloudGroup;
+
         function buildAmbience() {
-            const moon = new THREE.Mesh(new THREE.SphereGeometry(12, 16, 16), new THREE.MeshBasicMaterial({ color: 0xffffee, fog: false }));
-            moon.position.set(100, 80, -200);
-            scene.add(moon);
+            skyGroup = new THREE.Group();
+            scene.add(skyGroup);
 
-            const starGeo = new THREE.BufferGeometry();
-            const starPos = [];
-            for (let i = 0; i < 800; i++) {
-                starPos.push((Math.random() - 0.5) * 300, 30 + Math.random() * 100, -250 + Math.random() * 300);
+            // ---- Stars, in two layers so the sky has magnitude ----------
+            function starLayer(count, radius, size, opacity, warmChance) {
+                const geo = new THREE.BufferGeometry();
+                const p = [], col = [], c = new THREE.Color();
+                for (let i = 0; i < count; i++) {
+                    // Upper hemisphere, biased away from the horizon haze
+                    const u = Math.random() * Math.PI * 2;
+                    const v = Math.pow(Math.random(), 0.65) * (Math.PI / 2);
+                    const r = radius * (0.9 + Math.random() * 0.1);
+                    p.push(Math.cos(u) * Math.sin(v) * r, Math.cos(v) * r * 0.98 + 6, Math.sin(u) * Math.sin(v) * r);
+                    const roll = Math.random();
+                    if (roll < warmChance) c.setHSL(0.09, 0.5, 0.72);        // amber
+                    else if (roll < warmChance + 0.18) c.setHSL(0.58, 0.4, 0.8); // blue-white
+                    else c.setHSL(0, 0, 0.72 + Math.random() * 0.28);
+                    col.push(c.r, c.g, c.b);
+                }
+                geo.setAttribute('position', new THREE.Float32BufferAttribute(p, 3));
+                geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+                const pts = new THREE.Points(geo, new THREE.PointsMaterial({
+                    size: size, vertexColors: true, transparent: true, opacity: opacity, fog: false,
+                    sizeAttenuation: false
+                }));
+                skyGroup.add(pts);
+                return pts;
             }
-            starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starPos, 3));
-            scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.6, fog: false })));
+            starLayer(1500, 180, 1.2, 0.5, 0.07);
+            const brightStars = starLayer(240, 180, 2.6, 0.95, 0.12);
 
+            // ---- Milky Way: a dense band tilted across the sky ----------
+            const mwGeo = new THREE.BufferGeometry();
+            const mp = [], mc = [], mcol = new THREE.Color();
+            const tilt = 0.62;
+            for (let i = 0; i < 2600; i++) {
+                const along = Math.random() * Math.PI * 2;
+                const across = (Math.random() + Math.random() + Math.random() - 1.5) * 0.34; // clustered
+                const r = 178;
+                // A great circle, then tilted
+                let px = Math.cos(along) * r;
+                let py = Math.sin(across) * r;
+                let pz = Math.sin(along) * r * Math.cos(across);
+                const ty = py * Math.cos(tilt) - pz * Math.sin(tilt);
+                const tz = py * Math.sin(tilt) + pz * Math.cos(tilt);
+                if (ty < -10) continue;
+                mp.push(px, ty, tz);
+                mcol.setHSL(0.6 - Math.random() * 0.08, 0.25, 0.55 + Math.random() * 0.35);
+                mc.push(mcol.r, mcol.g, mcol.b);
+            }
+            mwGeo.setAttribute('position', new THREE.Float32BufferAttribute(mp, 3));
+            mwGeo.setAttribute('color', new THREE.Float32BufferAttribute(mc, 3));
+            skyGroup.add(new THREE.Points(mwGeo, new THREE.PointsMaterial({
+                size: 1.0, vertexColors: true, transparent: true, opacity: 0.28, fog: false,
+                sizeAttenuation: false, blending: THREE.AdditiveBlending
+            })));
+
+            // ---- Moon, cratered, with a halo through the haze -----------
+            const moonCan = texCanvas(64), mg = moonCan.getContext('2d');
+            mg.fillStyle = '#f2f0e2'; mg.fillRect(0, 0, 64, 64);
+            for (let i = 0; i < 26; i++) {
+                const cx = Math.random() * 64, cy = Math.random() * 64, r = 1.5 + Math.random() * 6;
+                mg.fillStyle = 'rgba(140,138,126,' + (0.25 + Math.random() * 0.4) + ')';
+                mg.beginPath(); mg.arc(cx, cy, r, 0, Math.PI * 2); mg.fill();
+            }
+            const moonTex = new THREE.CanvasTexture(moonCan);
+            moonTex.colorSpace = THREE.SRGBColorSpace;
+            moonTex.magFilter = THREE.NearestFilter;
+            const moon = new THREE.Mesh(new THREE.SphereGeometry(9, 20, 16),
+                new THREE.MeshBasicMaterial({ map: moonTex, fog: false }));
+            moon.position.set(78, 61, -140);   // inside the dome
+            moon.renderOrder = -8;
+            skyGroup.add(moon);
+
+            const haloCan = texCanvas(128), hg = haloCan.getContext('2d');
+            const hgrad = hg.createRadialGradient(64, 64, 8, 64, 64, 64);
+            hgrad.addColorStop(0, 'rgba(200,215,255,0.55)');
+            hgrad.addColorStop(0.35, 'rgba(150,175,230,0.15)');
+            hgrad.addColorStop(1, 'rgba(120,150,220,0)');
+            hg.fillStyle = hgrad; hg.fillRect(0, 0, 128, 128);
+            const haloTex = new THREE.CanvasTexture(haloCan);
+            haloTex.colorSpace = THREE.SRGBColorSpace;
+            const halo = new THREE.Mesh(new THREE.PlaneGeometry(90, 90),
+                new THREE.MeshBasicMaterial({ map: haloTex, transparent: true, fog: false, depthWrite: false, blending: THREE.AdditiveBlending }));
+            halo.position.copy(moon.position);
+            halo.lookAt(0, 20, 0);
+            halo.renderOrder = -7;
+            skyGroup.add(halo);
+
+            // ---- Cloud layer, drifting -----------------------------------
+            const cloudCan = texCanvas(128), cg = cloudCan.getContext('2d');
+            for (let i = 0; i < 14; i++) {
+                const cx = 24 + Math.random() * 80, cy = 34 + Math.random() * 60, r = 14 + Math.random() * 30;
+                const grad = cg.createRadialGradient(cx, cy, 0, cx, cy, r);
+                grad.addColorStop(0, 'rgba(255,255,255,0.5)');
+                grad.addColorStop(1, 'rgba(255,255,255,0)');
+                cg.fillStyle = grad;
+                cg.beginPath(); cg.arc(cx, cy, r, 0, Math.PI * 2); cg.fill();
+            }
+            const cloudTex = new THREE.CanvasTexture(cloudCan);
+            cloudTex.colorSpace = THREE.SRGBColorSpace;
+            cloudGroup = new THREE.Group();
+            scene.add(cloudGroup);
+            for (let i = 0; i < 11; i++) {
+                const size = rand(60, 150);
+                const cloud = new THREE.Mesh(new THREE.PlaneGeometry(size, size * rand(0.5, 0.8)),
+                    new THREE.MeshBasicMaterial({
+                        map: cloudTex, transparent: true, opacity: rand(0.35, 0.7),
+                        color: new THREE.Color().setHSL(0.62, 0.25, rand(0.06, 0.14)),
+                        depthWrite: false, fog: false
+                    }));
+                cloud.rotation.x = -Math.PI / 2;
+                cloud.rotation.z = rand(0, Math.PI * 2);
+                cloud.position.set(rand(-160, 160), rand(52, 88), rand(-200, 80));
+                cloud.renderOrder = -1;
+                cloudGroup.add(cloud);
+            }
+
+            // ---- Treeline on the horizon, past the fog -------------------
+            // Far enough out to read as a soft dark edge rather than spikes.
+            const ringPts = [];
+            for (let ring = 0; ring < 2; ring++) {
+                const ringR = 250 + ring * 22;
+                const segs = 420;
+                const phase = ring * 0.5;
+                for (let i = 0; i < segs; i++) {
+                    const a1 = ((i + phase) / segs) * Math.PI * 2;
+                    const a2 = ((i + 1 + phase) / segs) * Math.PI * 2;
+                    const h = (ring ? 8 : 5) + Math.random() * (ring ? 9 : 7);
+                    const x1 = Math.cos(a1) * ringR, z1 = Math.sin(a1) * ringR;
+                    const x2 = Math.cos(a2) * ringR, z2 = Math.sin(a2) * ringR;
+                    ringPts.push(x1, -3, z1, x2, -3, z2, (x1 + x2) / 2, h, (z1 + z2) / 2);
+                    ringPts.push(x1, -3, z1, (x1 + x2) / 2, h, (z1 + z2) / 2, x1, h * 0.45, z1);
+                }
+            }
+            const ringGeo = new THREE.BufferGeometry();
+            ringGeo.setAttribute('position', new THREE.Float32BufferAttribute(ringPts, 3));
+            const treeline = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({
+                color: 0x070a14, side: THREE.DoubleSide, fog: false
+            }));
+            treeline.renderOrder = -9;
+            scene.add(treeline);
+
+            // ---- Fireflies ----------------------------------------------
             const ffGeo = new THREE.BufferGeometry();
             const ffPos = [], ffPhases = [];
             for (let i = 0; i < fireflyCount; i++) {
@@ -1635,7 +1981,11 @@
                 blending: THREE.AdditiveBlending, fog: true
             }));
             scene.add(fireflies);
+
+            ambience.brightStars = brightStars;
         }
+
+        const ambience = { brightStars: null };
 
         // =====================================================================
         // POLICE CRUISER
@@ -2780,6 +3130,20 @@
             const delta = Math.min(0.1, (time - prevTime) / 1000);
             prevTime = time;
 
+            // If the first couple of seconds are slow, step the resolution
+            // back down rather than shipping a slideshow.
+            if (!perf.checked) {
+                perf.frames++;
+                perf.elapsed += delta;
+                if (perf.frames > 90) {
+                    perf.checked = true;
+                    const ms = (perf.elapsed / perf.frames) * 1000;
+                    if (ms > 45) renderer.setPixelRatio(0.4);
+                    else if (ms > 28) renderer.setPixelRatio(0.55);
+                    renderer.setSize(window.innerWidth, window.innerHeight);
+                }
+            }
+
             AudioSys.setListener(yawObject.position.x, yawObject.position.z, yawObject.rotation.y);
             runTimers(time);
             LightPool.update(delta);
@@ -2819,6 +3183,21 @@
             if (car.driving) {
                 car.group.position.z -= 15 * delta;
                 yawObject.position.z -= 15 * delta;
+            }
+
+            // The sky turns, the clouds slide, the bright stars breathe.
+            if (skyGroup) {
+                skyGroup.rotation.y += delta * 0.0022;
+                if (ambience.brightStars) {
+                    ambience.brightStars.material.opacity = 0.8 + Math.sin(time * 0.0008) * 0.15;
+                }
+            }
+            if (cloudGroup) {
+                for (let i = 0; i < cloudGroup.children.length; i++) {
+                    const c = cloudGroup.children[i];
+                    c.position.x += delta * (0.35 + i * 0.04);
+                    if (c.position.x > 180) c.position.x = -180;
+                }
             }
 
             if (fireflies) {
