@@ -814,7 +814,7 @@
 
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x0a0c10);
-            scene.fog = new THREE.Fog(0x0a0c10, 5, 45);
+            scene.fog = new THREE.Fog(0x0a0c10, 8, 62);
 
             camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 100);
 
@@ -827,15 +827,16 @@
 
             renderer = new THREE.WebGLRenderer({ antialias: false });
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(0.35);
+            // Low enough to stay chunky, high enough to read the street.
+            renderer.setPixelRatio(0.7);
             container.appendChild(renderer.domElement);
 
-            ambientLight = new THREE.AmbientLight(0x202530, 1.5);
+            ambientLight = new THREE.AmbientLight(0x222836, 1.8);
             scene.add(ambientLight);
 
             // Moonlight: just enough directional fill to give the lawns shape
             // so a porch light coming on still reads as an event.
-            const moonLight = new THREE.DirectionalLight(0x8fa8d8, 1.1);
+            const moonLight = new THREE.DirectionalLight(0x9db2de, 1.15);
             moonLight.position.set(100, 80, -200);
             scene.add(moonLight);
 
@@ -891,20 +892,21 @@
         const MAT = {};
 
         function buildEnvironment() {
-            MAT.ground    = new THREE.MeshLambertMaterial({ color: 0x112211, flatShading: true });
-            MAT.lawn      = new THREE.MeshLambertMaterial({ color: 0x1e3c23, flatShading: true });
-            MAT.road      = new THREE.MeshLambertMaterial({ color: 0x1a1a1a, flatShading: true });
-            MAT.sidewalk  = new THREE.MeshLambertMaterial({ color: 0x333333, flatShading: true });
-            MAT.concrete  = new THREE.MeshLambertMaterial({ color: 0x2b2b2e, flatShading: true });
-            MAT.door      = new THREE.MeshLambertMaterial({ color: 0x3e2723, flatShading: true });
-            MAT.bush      = new THREE.MeshLambertMaterial({ color: 0x14351a, flatShading: true });
+            MAT.ground    = new THREE.MeshLambertMaterial({ color: 0x23361f, flatShading: true });
+            MAT.lawn      = new THREE.MeshLambertMaterial({ color: 0x33512f, flatShading: true });
+            MAT.road      = new THREE.MeshLambertMaterial({ color: 0x343438, flatShading: true });
+            MAT.sidewalk  = new THREE.MeshLambertMaterial({ color: 0x565650, flatShading: true });
+            MAT.concrete  = new THREE.MeshLambertMaterial({ color: 0x4a4a4c, flatShading: true });
+            MAT.door      = new THREE.MeshLambertMaterial({ color: 0x5a3a2a, flatShading: true });
+            MAT.bush      = new THREE.MeshLambertMaterial({ color: 0x1f4526, flatShading: true });
             MAT.mailbox   = new THREE.MeshLambertMaterial({ color: 0x444455, flatShading: true });
             MAT.dark      = new THREE.MeshLambertMaterial({ color: 0x111111, flatShading: true });
             MAT.metal     = new THREE.MeshLambertMaterial({ color: 0x555a60, flatShading: true });
             MAT.wood      = new THREE.MeshLambertMaterial({ color: 0x4a3b2a, flatShading: true });
             MAT.picket    = new THREE.MeshLambertMaterial({ color: 0x6b6558, flatShading: true });
+            MAT.trim      = new THREE.MeshLambertMaterial({ color: 0x8c8877, flatShading: true });
             MAT.trunk     = new THREE.MeshLambertMaterial({ color: 0x2a1f16, flatShading: true });
-            MAT.leaves    = new THREE.MeshLambertMaterial({ color: 0x0d2410, flatShading: true });
+            MAT.leaves    = new THREE.MeshLambertMaterial({ color: 0x1a3a1e, flatShading: true });
             MAT.shadow    = new THREE.MeshBasicMaterial({ color: 0x0a0a0c });
             MAT.plastic   = new THREE.MeshLambertMaterial({ color: 0x1f3a2a, flatShading: true });
 
@@ -929,7 +931,7 @@
             ground.rotation.x = -Math.PI / 2;
             scene.add(ground);
 
-            const lawn = new THREE.Mesh(new THREE.PlaneGeometry(64, 240, 48, 80), MAT.lawn);
+            const lawn = new THREE.Mesh(new THREE.PlaneGeometry(76, 240, 52, 80), MAT.lawn);
             lawn.rotation.x = -Math.PI / 2;
             lawn.position.set(0, 0.005, -40);
             scene.add(lawn);
@@ -971,8 +973,9 @@
 
             for (let i = 0; i < numHouses; i++) {
                 const zPos = startZ + (i * houseSpacing);
-                createHouse(-15 + rand(-1.5, 1.5), zPos + rand(-2, 2), 1, roster[i * 2], 1400 + i * 2);
-                createHouse(15 + rand(-1.5, 1.5), zPos + rand(-2, 2), -1, roster[i * 2 + 1], 1401 + i * 2);
+                // Set back from the curb so the front yards have room to read.
+                createHouse(-21 + rand(-1, 1), zPos + rand(-2, 2), 1, roster[i * 2], 1400 + i * 2);
+                createHouse(21 + rand(-1, 1), zPos + rand(-2, 2), -1, roster[i * 2 + 1], 1401 + i * 2);
             }
 
             buildStreetFurniture(startZ, numHouses * houseSpacing);
@@ -1012,16 +1015,18 @@
             const style = pick(HOUSE_STYLES);
 
             // Structural identity per style
+            // Storey heights are set against the player's 1.75-unit eye line, so
+            // a door is a door rather than a barn opening.
             let W, H, D, roofType, roofH;
             switch (style) {
-                case 'TWOSTORY': W = rand(8.5, 10); H = rand(7.5, 8.6); D = rand(10, 12); roofType = 'GABLE'; roofH = rand(2.6, 3.6); break;
-                case 'SPLIT':    W = rand(9.5, 11); H = rand(5.0, 6.0); D = rand(11, 13); roofType = 'FLAT';  roofH = 0.5; break;
-                case 'BUNGALOW': W = rand(8.5, 10); H = rand(4.4, 5.2); D = rand(11, 13); roofType = 'HIP';   roofH = rand(2.0, 2.8); break;
-                default:         W = rand(9.5, 11.5); H = rand(4.2, 5.2); D = rand(12, 15); roofType = 'GABLE'; roofH = rand(2.2, 3.2); break;
+                case 'TWOSTORY': W = rand(8.5, 10); H = rand(6.0, 6.6); D = rand(10, 12); roofType = 'GABLE'; roofH = rand(1.9, 2.5); break;
+                case 'SPLIT':    W = rand(9.5, 11); H = rand(4.4, 5.0); D = rand(11, 13); roofType = 'FLAT';  roofH = 0.4; break;
+                case 'BUNGALOW': W = rand(8.5, 10); H = rand(3.4, 3.8); D = rand(11, 13); roofType = 'HIP';   roofH = rand(1.6, 2.2); break;
+                default:         W = rand(9.5, 11.5); H = rand(3.3, 3.7); D = rand(12, 15); roofType = 'GABLE'; roofH = rand(1.8, 2.4); break;
             }
 
             const hue = Math.random();
-            const matWalls = new THREE.MeshLambertMaterial({ color: new THREE.Color().setHSL(hue, 0.15 + Math.random() * 0.25, 0.24 + Math.random() * 0.3), flatShading: true });
+            const matWalls = new THREE.MeshLambertMaterial({ color: new THREE.Color().setHSL(hue, 0.08 + Math.random() * 0.18, 0.20 + Math.random() * 0.24), flatShading: true });
             const matRoof = new THREE.MeshLambertMaterial({ color: new THREE.Color().setHSL(Math.random(), 0.1, 0.12 + Math.random() * 0.16), flatShading: true });
 
             const house = {
@@ -1056,171 +1061,178 @@
 
             // Chimney
             if (Math.random() > 0.45) {
-                const chim = new THREE.Mesh(new THREE.BoxGeometry(1.0, 2.2 + Math.random(), 1.0), MAT.dark);
+                const chim = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.4 + Math.random() * 0.6, 0.7), MAT.dark);
                 chim.position.set(x - dir * W * 0.22, H + roofH * 0.7, z + rand(-D * 0.25, D * 0.25));
                 house.group.add(chim);
             }
 
-            const wallX = x + dir * (W / 2);          // street-facing wall
-            const doorZ = z + rand(1.5, 2.8);
+            // =============================================================
+            // FAÇADE
+            // Everything here is clamped to the wall it is mounted on, so no
+            // window ever hangs off the corner of a shallow house.
+            // =============================================================
+            const wallX = x + dir * (W / 2);
+            const faceMin = z - D / 2 + 0.9;
+            const faceMax = z + D / 2 - 0.9;
+            const onFace = (v, half) => Math.max(faceMin + half, Math.min(faceMax - half, v));
+
+            const DOOR_W = 1.15, DOOR_H = 2.15;
+            const doorZ = onFace(z + rand(1.0, 2.4), DOOR_W / 2 + 0.4);
             const doorX = wallX;
             house.doorX = doorX; house.doorZ = doorZ;
 
             // ---- Front door on a hinge so it can actually swing open ------
+            const casing = new THREE.Mesh(new THREE.BoxGeometry(0.22, DOOR_H + 0.3, DOOR_W + 0.34), MAT.trim);
+            casing.position.set(wallX, (DOOR_H + 0.3) / 2, doorZ);
+            house.group.add(casing);
+
             const doorPivot = new THREE.Group();
-            doorPivot.position.set(doorX, 0, doorZ - 1.25);
-            const doorMesh = new THREE.Mesh(new THREE.BoxGeometry(0.2, 4.5, 2.5), MAT.door);
-            doorMesh.position.set(0, 2.25, 1.25);
+            doorPivot.position.set(doorX, 0, doorZ - DOOR_W / 2);
+            const doorMesh = new THREE.Mesh(new THREE.BoxGeometry(0.16, DOOR_H, DOOR_W), MAT.door);
+            doorMesh.position.set(dir * 0.06, DOOR_H / 2, DOOR_W / 2);
             doorPivot.add(doorMesh);
-            // Doorknob, because you will be looking right at it
-            const knob = new THREE.Mesh(new THREE.SphereGeometry(0.09, 6, 6), MAT.metal);
-            knob.position.set(dir * 0.16, 2.2, 2.2);
+            const knob = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 6), MAT.metal);
+            knob.position.set(dir * 0.14, 1.05, DOOR_W - 0.2);
             doorPivot.add(knob);
             house.group.add(doorPivot);
             house.doorPivot = doorPivot;
             house.doorSwing = dir;
 
             // Doorstep
-            const step = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.35, 3.4), MAT.concrete);
-            step.position.set(doorX + dir * 0.8, 0.17, doorZ);
+            const step = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.16, 1.7), MAT.concrete);
+            step.position.set(doorX + dir * 0.5, 0.08, doorZ);
             house.group.add(step);
 
-            // House number plaque next to the door
-            const plaqueTex = makeTextTexture(String(address), '#141414', '#c9c2a8', 64, 24);
+            // House number, beside the door where a house number goes
+            const plaqueTex = makeTextTexture(String(address), '#15150f', '#8f8a72', 64, 24);
             const plaque = new THREE.Mesh(
-                new THREE.PlaneGeometry(1.1, 0.42),
+                new THREE.PlaneGeometry(0.55, 0.22),
                 new THREE.MeshBasicMaterial({ map: plaqueTex })
             );
-            plaque.position.set(doorX + dir * 0.12, 3.1, doorZ - 1.9);
+            plaque.position.set(doorX + dir * 0.13, 1.85, onFace(doorZ - 0.95, 0.3));
             plaque.rotation.y = dir === 1 ? Math.PI / 2 : -Math.PI / 2;
             house.group.add(plaque);
 
             // ---- Windows (each one is its own room light) -----------------
             const startLit = arche.litAtNight && Math.random() > 0.15;
             function addWindow(wy, wz, ww, wh, room, forceOn) {
+                wz = onFace(wz, ww / 2 + 0.3);
                 const on = forceOn !== undefined ? forceOn : (startLit && Math.random() > 0.45);
                 const mat = makeWindowMat(on, arche.tint);
-                const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.3, wh, ww), mat);
-                mesh.position.set(wallX, wy, wz);
-                house.group.add(mesh);
-                // Cross muntins for a bit of frame detail
-                const bar = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.1, ww), MAT.dark);
-                bar.position.set(wallX, wy, wz);
-                house.group.add(bar);
-                const rec = { mesh: mesh, mat: mat, on: on, room: room, isTV: false, base: arche.tint };
+                // Trim, then glass set slightly proud of it: reads as a window
+                // rather than a rectangle stuck to the side of a box.
+                const frame = new THREE.Mesh(new THREE.BoxGeometry(0.24, wh + 0.26, ww + 0.26), MAT.trim);
+                frame.position.set(wallX, wy, wz);
+                house.group.add(frame);
+                const glass = new THREE.Mesh(new THREE.BoxGeometry(0.3, wh, ww), mat);
+                glass.position.set(wallX + dir * 0.03, wy, wz);
+                house.group.add(glass);
+                const mullion = new THREE.Mesh(new THREE.BoxGeometry(0.34, wh, 0.07), MAT.trim);
+                mullion.position.set(wallX + dir * 0.04, wy, wz);
+                house.group.add(mullion);
+                const rec = { mesh: glass, mat: mat, on: on, room: room, isTV: false, base: arche.tint, z: wz, w: ww };
                 house.windows.push(rec);
                 return rec;
             }
 
-            const mainWinZ = doorZ - rand(3.5, 4.5);
-            const mainWin = addWindow(2.6, mainWinZ, 3.0, 2.4, 'MAIN');
+            const mainWinZ = doorZ - rand(2.4, 3.0);
+            const mainWin = addWindow(1.55, mainWinZ, 1.9, 1.5, 'MAIN');
             // Some living rooms have a television on with nobody watching it
             if ((archetypeKey === 'IGNORER' || archetypeKey === 'CALLER') && Math.random() > 0.3) {
                 setWindowTV(mainWin);
             }
-            if (Math.random() > 0.22) addWindow(2.6, doorZ + rand(3.2, 4.2), 2.4, 2.2, 'SIDE');
+            // Second ground-floor window whenever the wall has room for it
+            if (D > 11.5 || Math.random() > 0.35) addWindow(1.55, doorZ + rand(2.0, 2.8), 1.5, 1.4, 'SIDE');
             if (style === 'TWOSTORY') {
-                addWindow(6.0, mainWinZ + rand(-0.5, 0.5), 2.2, 2.0, 'UPPER', false);
-                if (Math.random() > 0.4) addWindow(6.0, doorZ + rand(2.5, 3.5), 2.0, 2.0, 'UPPER', false);
-            } else if (roofType === 'FLAT' && H > 5.2) {
-                // Split-level: the raised half gets its own row of windows
-                addWindow(H - 1.4, mainWinZ + rand(-0.5, 0.5), 1.8, 1.5, 'UPPER', false);
-                if (Math.random() > 0.5) addWindow(H - 1.4, doorZ + rand(2.4, 3.4), 1.6, 1.5, 'UPPER', false);
-            } else if (roofType !== 'FLAT' && Math.random() > 0.55) {
-                // Attic / dormer window tucked into the roof
-                addWindow(H + roofH * 0.35, z + rand(-1, 1), 1.4, 1.2, 'UPPER', false);
+                addWindow(H - 1.5, mainWin.z + rand(-0.4, 0.4), 1.3, 1.3, 'UPPER', false);
+                if (Math.random() > 0.35) addWindow(H - 1.5, doorZ + rand(1.6, 2.4), 1.2, 1.3, 'UPPER', false);
+            } else if (roofType === 'FLAT') {
+                // Split-level: the raised half gets a clerestory strip
+                addWindow(H - 1.1, mainWin.z + rand(-0.4, 0.4), 1.4, 0.8, 'UPPER', false);
+            } else if (Math.random() > 0.55) {
+                // Attic window tucked into the gable
+                addWindow(H + roofH * 0.3, z + rand(-0.8, 0.8), 0.9, 0.8, 'UPPER', false);
             }
 
             // Somebody standing in the window, backlit.
-            const sil = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.7, 0.7), MAT.shadow);
-            sil.position.set(wallX + dir * 0.2, 2.4, mainWinZ);
+            const sil = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.25, 0.45), MAT.shadow);
+            sil.position.set(wallX + dir * 0.15, 1.5, mainWin.z);
             sil.visible = false;
             house.group.add(sil);
             house.silhouette = sil;
-            house.silBaseZ = mainWinZ;
+            house.silBaseZ = mainWin.z;
+            house.silSway = Math.max(0.1, mainWin.w / 2 - 0.35);
 
-            // ---- Porch light ---------------------------------------------
+            // ---- Porch light, mounted over the door ----------------------
             const porchOn = Math.random() > 0.62;
             const pLightMat = new THREE.MeshLambertMaterial({ color: 0xffffee, emissive: porchOn ? 0xffaa33 : 0x221100 });
-            const pLightMesh = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.45, 0.3), pLightMat);
-            pLightMesh.position.set(doorX + dir * 0.1, 3.9, doorZ + 1.8);
+            const pLightMesh = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.26, 0.18), pLightMat);
+            pLightMesh.position.set(doorX + dir * 0.16, DOOR_H + 0.55, doorZ);
             house.group.add(pLightMesh);
-            const pLight = new THREE.PointLight(0xffaa33, porchOn ? 1.2 : 0, 12);
-            pLight.position.set(doorX + dir * 0.6, 3.8, doorZ + 1.8);
+            const pLight = new THREE.PointLight(0xffaa33, porchOn ? 1.2 : 0, 11);
+            pLight.position.set(doorX + dir * 0.5, DOOR_H + 0.5, doorZ);
             house.group.add(pLight);
             house.porch = { mesh: pLightMesh, mat: pLightMat, light: pLight, on: porchOn };
 
             // ---- Walkway + driveway --------------------------------------
             const sidewalkX = -7 * dir;
             const walkwayLength = Math.abs(doorX - sidewalkX);
-            const walkway = new THREE.Mesh(new THREE.PlaneGeometry(walkwayLength, 2, 8, 2), MAT.sidewalk);
+            const walkway = new THREE.Mesh(new THREE.PlaneGeometry(walkwayLength, 1.5, 10, 2), MAT.sidewalk);
             walkway.rotation.x = -Math.PI / 2;
             walkway.position.set((doorX + sidewalkX) / 2, 0.03, doorZ);
             house.group.add(walkway);
 
             let driveZ = null;
             if (style === 'SPLIT' || Math.random() > 0.5) {
-                driveZ = z - D / 2 - rand(1.5, 3);
-                const drive = new THREE.Mesh(new THREE.PlaneGeometry(Math.abs(doorX - sidewalkX) + 4, 5, 8, 4), MAT.concrete);
+                driveZ = z - D / 2 - rand(1.6, 2.6);
+                const drive = new THREE.Mesh(new THREE.PlaneGeometry(walkwayLength + 3, 3.4, 10, 3), MAT.concrete);
                 drive.rotation.x = -Math.PI / 2;
-                drive.position.set((doorX + sidewalkX) / 2 + dir * 0.5, 0.025, driveZ);
+                drive.position.set((doorX + sidewalkX) / 2 + dir * 1.4, 0.025, driveZ);
                 house.group.add(drive);
 
                 if (style === 'SPLIT') {
-                    const garage = new THREE.Mesh(new THREE.BoxGeometry(W * 0.55, 3.4, 6), matWalls);
-                    garage.position.set(x + dir * (W * 0.28), 1.7, driveZ);
+                    const garage = new THREE.Mesh(new THREE.BoxGeometry(W * 0.5, 2.5, 5), matWalls);
+                    garage.position.set(x + dir * (W * 0.3), 1.25, driveZ);
                     house.group.add(garage);
                     addCollision(garage);
-                    const gDoor = new THREE.Mesh(new THREE.BoxGeometry(0.2, 2.8, 5.2), MAT.metal);
-                    gDoor.position.set(x + dir * (W * 0.28 + W * 0.275), 1.4, driveZ);
+                    const gDoor = new THREE.Mesh(new THREE.BoxGeometry(0.18, 2.1, 4.2), MAT.metal);
+                    gDoor.position.set(x + dir * (W * 0.3 + W * 0.25), 1.05, driveZ);
                     house.group.add(gDoor);
-                }
-
-                // A car in the driveway means somebody is home.
-                if (Math.random() > 0.4) {
-                    const parked = makeCar(new THREE.Color().setHSL(Math.random(), 0.35, 0.16).getHex());
-                    parked.scale.setScalar(0.9);
-                    parked.position.set(x + dir * (W / 2 + 3.5), 0, driveZ);
-                    parked.rotation.y = Math.PI / 2 * dir;
-                    house.group.add(parked);
-                    addCollision(parked, 0.2);
                 }
             }
 
-            // ---- Mailbox at the curb -------------------------------------
-            const mbX = (x > 0 ? 6.5 : -6.5);
-            const mbZ = doorZ + rand(-0.8, 0.8);
-            const mbPost = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.5, 0.2), MAT.mailbox);
-            mbPost.position.set(mbX, 0.75, mbZ);
-            const mbBox = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.5, 0.8), MAT.mailbox);
-            mbBox.position.set(mbX, 1.6, mbZ);
+            // ---- Mailbox, out at the curb where the mail goes -------------
+            const mbX = (x > 0 ? 8.6 : -8.6);
+            const mbZ = doorZ + rand(-0.6, 0.6);
+            const mbPost = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.0, 0.12), MAT.mailbox);
+            mbPost.position.set(mbX, 0.5, mbZ);
+            const mbBox = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.3, 0.5), MAT.mailbox);
+            mbBox.position.set(mbX, 1.15, mbZ);
             house.group.add(mbPost); house.group.add(mbBox);
             addCollision(mbPost).union(new THREE.Box3().setFromObject(mbBox));
-            // Mailbox flag, up on about a third of them
             if (Math.random() > 0.65) {
-                const flag = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.45, 0.16), new THREE.MeshLambertMaterial({ color: 0x992222, flatShading: true }));
-                flag.position.set(mbX + 0.3, 1.85, mbZ - 0.2);
+                const flag = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.26, 0.09), new THREE.MeshLambertMaterial({ color: 0x992222, flatShading: true }));
+                flag.position.set(mbX + 0.19, 1.3, mbZ - 0.12);
                 house.group.add(flag);
             }
 
             // ---- Porch detail per style ----------------------------------
             if (style === 'BUNGALOW') {
-                const overhang = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.3, 6.5), matRoof);
-                overhang.position.set(doorX + dir * 1.3, 4.2, doorZ);
+                const overhang = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.22, 4.4), matRoof);
+                overhang.position.set(doorX + dir * 1.1, 2.95, doorZ);
                 house.group.add(overhang);
-                [-2.6, 2.6].forEach(off => {
-                    const post = new THREE.Mesh(new THREE.BoxGeometry(0.22, 4.2, 0.22), MAT.wood);
-                    post.position.set(doorX + dir * 2.4, 2.1, doorZ + off);
+                [-1.9, 1.9].forEach(off => {
+                    const post = new THREE.Mesh(new THREE.BoxGeometry(0.16, 2.85, 0.16), MAT.wood);
+                    post.position.set(doorX + dir * 2.0, 1.42, onFace(doorZ + off, 0.2));
                     house.group.add(post);
                 });
-                // Porch chair, occupied by nobody. Probably.
                 if (Math.random() > 0.5) {
                     const chair = new THREE.Group();
-                    const seat = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.12, 0.8), MAT.wood);
-                    seat.position.y = 0.55; chair.add(seat);
-                    const back = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.9, 0.8), MAT.wood);
-                    back.position.set(-0.35 * dir, 1.0, 0); chair.add(back);
-                    chair.position.set(doorX + dir * 1.6, 0, doorZ + rand(-2.4, 2.4));
+                    const seat = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.08, 0.5), MAT.wood);
+                    seat.position.y = 0.42; chair.add(seat);
+                    const back = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.55, 0.5), MAT.wood);
+                    back.position.set(-0.21 * dir, 0.72, 0); chair.add(back);
+                    chair.position.set(doorX + dir * 1.1, 0, onFace(doorZ + rand(-1.7, 1.7), 0.3));
                     house.group.add(chair);
                 }
             }
@@ -1228,11 +1240,11 @@
             // ---- Yard identity -------------------------------------------
             // Registered before the yard is grown so its own walkway is protected.
             houses.push(house);
-            buildYard(house, matWalls, driveZ);
+            buildYard(house, driveZ);
 
             interactables.push({
                 type: 'doorbell',
-                position: new THREE.Vector3(doorX + dir * 0.8, 1.5, doorZ),
+                position: new THREE.Vector3(doorX + dir * 0.7, 1.2, doorZ),
                 houseId: house.id,
                 active: true
             });
@@ -1240,77 +1252,84 @@
 
         // Bushes, trees, fences and whatever this particular family leaves out
         // on the lawn. This is most of what makes one house feel unlike another.
-        function buildYard(house, matWalls, driveZ) {
-            const { x, z, dir, W, D, doorX, doorZ } = house;
+        // Bushes, trees, a fence line and one piece of whatever this family
+        // leaves out on the lawn. Nothing is allowed inside the house or across
+        // the front walk.
+        function buildYard(house, driveZ) {
+            const { x, z, dir, W, D, doorZ } = house;
+            const wallX = x + dir * (W / 2);
             const bushGeom = new THREE.DodecahedronGeometry(1.5, 0);
 
-            // Foundation shrubs + scattered cover
-            for (let b = 0; b < 4; b++) {
-                let bx, bz, ok = false, attempts = 0;
-                while (!ok && attempts < 20) {
-                    bx = x + rand(-W * 0.7, W * 0.7);
-                    bz = z + rand(-D * 0.55, D * 0.55);
-                    attempts++;
-                    ok = !blocksWalkway(bx, bz);
-                }
-                if (!ok) continue;
-                addBush(bx, bz, bushGeom, rand(0.8, 1.4));
+            // Foundation shrubs: a row along the front wall, skipping the walk
+            const shrubs = 2 + Math.floor(Math.random() * 3);
+            for (let b = 0; b < shrubs; b++) {
+                const bx = wallX + dir * rand(1.1, 2.0);
+                const bz = z + rand(-D * 0.42, D * 0.42);
+                if (blocksWalkway(bx, bz) || Math.abs(bz - doorZ) < 1.6) continue;
+                addBush(bx, bz, bushGeom, rand(0.55, 0.85));
             }
 
-            // A tree or two
-            const treeCount = Math.random() > 0.45 ? (Math.random() > 0.7 ? 2 : 1) : 0;
-            for (let t = 0; t < treeCount; t++) {
-                const tx = x + dir * rand(W * 0.6, W * 0.95);
-                const tz = z + rand(-D * 0.6, D * 0.6);
-                if (blocksWalkway(tx, tz)) continue;
-                makeTree(tx, tz, house.group);
+            // Cover in the gap between this house and the next one along
+            for (let b = 0; b < 2; b++) {
+                const side = Math.random() > 0.5 ? 1 : -1;
+                const bz = z + side * (D / 2 + rand(1.5, 4.0));
+                const bx = x + rand(-W * 0.45, W * 0.45) + dir * rand(0, 3);
+                if (blocksWalkway(bx, bz)) continue;
+                addBush(bx, bz, bushGeom, rand(0.7, 1.1));
             }
 
-            // Property line fence
-            if (Math.random() > 0.5) {
-                const fenceZ = z + (D / 2) + 2.5;
-                const fenceStyle = Math.random() > 0.5 ? 'PICKET' : 'CHAIN';
-                const from = dir === 1 ? -8.5 : 8.5;
-                const to = x + dir * -W * 0.2;
-                const steps = 10;
-                for (let s = 0; s <= steps; s++) {
-                    const px = from + (to - from) * (s / steps);
-                    const h = fenceStyle === 'PICKET' ? 0.95 : 1.4;
-                    const p = new THREE.Mesh(new THREE.BoxGeometry(0.09, h, 0.09), fenceStyle === 'PICKET' ? MAT.picket : MAT.metal);
-                    p.position.set(px, h / 2, fenceZ);
-                    house.group.add(p);
-                }
-                const rail = new THREE.Mesh(new THREE.BoxGeometry(Math.abs(to - from), 0.08, 0.05), fenceStyle === 'PICKET' ? MAT.picket : MAT.metal);
-                rail.position.set((from + to) / 2, fenceStyle === 'PICKET' ? 0.7 : 1.3, fenceZ);
-                house.group.add(rail);
+            // A tree, out of the way of the walk
+            if (Math.random() > 0.45) {
+                const tx = wallX + dir * rand(2.5, 5.5);
+                const tz = z + rand(-D * 0.5, D * 0.5);
+                if (!blocksWalkway(tx, tz) && !insideFootprint(tx, tz, 0.5)) makeTree(tx, tz, house.group);
             }
 
-            // Lawn junk: the actual personality of a front yard
-            const props = shuffle(['GNOME', 'FLAMINGO', 'HOOP', 'SWING', 'POOL', 'DISH', 'SALE', 'SPRINKLER', 'TRAMPOLINE', 'BIKE']);
-            const count = 1 + Math.floor(Math.random() * 3);
-            for (let i = 0; i < count; i++) {
-                let px, pz, ok = false, attempts = 0;
-                while (!ok && attempts < 12) {
-                    px = x + dir * rand(W * 0.55, W * 1.0);
-                    pz = z + rand(-D * 0.5, D * 0.5);
-                    attempts++;
-                    ok = !blocksWalkway(px, pz);
+            // Property-line fence: posts and two rails, evenly spaced
+            if (Math.random() > 0.62) {
+                const fenceZ = z + (D / 2) + rand(2.0, 3.0);
+                const rustic = Math.random() > 0.5;
+                const mat = rustic ? MAT.wood : MAT.picket;
+                const from = -8.2 * dir;
+                const to = wallX + dir * 0.5;
+                const span = Math.abs(to - from);
+                const posts = Math.max(3, Math.round(span / 2.6));
+                for (let p = 0; p <= posts; p++) {
+                    const px = from + (to - from) * (p / posts);
+                    const post = new THREE.Mesh(new THREE.BoxGeometry(0.11, 1.05, 0.11), mat);
+                    post.position.set(px, 0.52, fenceZ);
+                    house.group.add(post);
                 }
-                if (!ok) continue;
-                makeProp(props[i], px, pz, house);
+                [0.4, 0.85].forEach(h => {
+                    const rail = new THREE.Mesh(new THREE.BoxGeometry(span, 0.08, 0.06), mat);
+                    rail.position.set((from + to) / 2, h, fenceZ);
+                    house.group.add(rail);
+                });
+            }
+
+            // At most one piece of lawn furniture, off to the side
+            if (Math.random() > 0.55) {
+                const kind = pick(['GNOME', 'FLAMINGO', 'HOOP', 'SALE', 'SWING']);
+                for (let attempt = 0; attempt < 10; attempt++) {
+                    const px = wallX + dir * rand(2.0, 5.5);
+                    const pz = z + rand(-D * 0.5, D * 0.5);
+                    if (blocksWalkway(px, pz) || Math.abs(pz - doorZ) < 3.0) continue;
+                    makeProp(kind, px, pz, house);
+                    break;
+                }
             }
 
             // Trash bins at the curb - knock one over and the whole street hears it
-            if (Math.random() > 0.45) {
-                const n = Math.random() > 0.6 ? 2 : 1;
+            if (Math.random() > 0.5) {
+                const n = Math.random() > 0.65 ? 2 : 1;
                 for (let i = 0; i < n; i++) {
-                    const bx = -8.2 * dir;
-                    const bz = (driveZ !== null ? driveZ : z) + i * 1.3 + rand(-0.5, 0.5);
+                    const bx = -8.4 * dir;
+                    const bz = (driveZ !== null ? driveZ : z + D * 0.4) + i * 1.1 + rand(-0.3, 0.3);
                     const bin = new THREE.Group();
-                    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.38, 1.2, 8), MAT.plastic);
-                    body.position.y = 0.6; bin.add(body);
-                    const lid = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.12, 8), MAT.dark);
-                    lid.position.y = 1.25; bin.add(lid);
+                    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.29, 1.0, 8), MAT.plastic);
+                    body.position.y = 0.5; bin.add(body);
+                    const lid = new THREE.Mesh(new THREE.CylinderGeometry(0.37, 0.37, 0.09, 8), MAT.dark);
+                    lid.position.y = 1.04; bin.add(lid);
                     bin.position.set(bx, 0, bz);
                     scene.add(bin);
                     bins.push({ mesh: bin, x: bx, z: bz, knocked: false });
@@ -1318,28 +1337,40 @@
             }
         }
 
+        // Nothing decorative belongs inside somebody's living room.
+        function insideFootprint(px, pz, margin) {
+            const m = margin || 0;
+            for (let i = 0; i < houses.length; i++) {
+                const h = houses[i];
+                if (Math.abs(px - h.x) < h.W / 2 + m && Math.abs(pz - h.z) < h.D / 2 + m) return true;
+            }
+            return false;
+        }
+
         function addBush(bx, bz, geom, scale) {
             const bush = new THREE.Mesh(geom || new THREE.DodecahedronGeometry(1.5, 0), MAT.bush);
-            bush.position.set(bx, 0.8, bz);
+            bush.position.set(bx, 0.55 + scale * 0.35, bz);
             bush.rotation.y = Math.random() * Math.PI;
             bush.scale.setScalar(scale);
             scene.add(bush);
             const box = new THREE.Box3().setFromObject(bush);
-            box.expandByScalar(-0.4);
+            box.expandByScalar(-0.35);
             collisionBoxes.push(box);
-            bushes.push({ center: bush.position.clone(), radius: 2.8 * scale, mesh: bush });
+            // Concealment reaches a little past the leaves so pressing into a
+            // hedge counts as being in it.
+            bushes.push({ center: bush.position.clone(), radius: 1.5 + 1.7 * scale, mesh: bush });
             return bush;
         }
 
         function makeTree(tx, tz, parent) {
             const tree = new THREE.Group();
-            const th = rand(3.5, 6);
-            const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.34, th, 6), MAT.trunk);
+            const th = rand(2.8, 4.6);
+            const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.26, th, 6), MAT.trunk);
             trunk.position.y = th / 2;
             tree.add(trunk);
             const layers = 2 + Math.floor(Math.random() * 2);
             for (let i = 0; i < layers; i++) {
-                const r = rand(1.6, 2.6) * (1 - i * 0.18);
+                const r = rand(1.1, 1.8) * (1 - i * 0.18);
                 const canopy = new THREE.Mesh(new THREE.DodecahedronGeometry(r, 0), MAT.leaves);
                 canopy.position.set(rand(-0.5, 0.5), th + i * r * 0.8 - 0.4, rand(-0.5, 0.5));
                 canopy.rotation.set(Math.random(), Math.random(), Math.random());
@@ -1359,120 +1390,87 @@
             const g = new THREE.Group();
             switch (kind) {
                 case 'GNOME': {
-                    const b = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.22, 0.4, 6), new THREE.MeshLambertMaterial({ color: 0x3b4c6b, flatShading: true }));
-                    b.position.y = 0.2; g.add(b);
-                    const hat = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.35, 6), new THREE.MeshLambertMaterial({ color: 0x8a2b2b, flatShading: true }));
-                    hat.position.y = 0.55; g.add(hat);
+                    const b = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.15, 0.28, 6), new THREE.MeshLambertMaterial({ color: 0x3b4c6b, flatShading: true }));
+                    b.position.y = 0.14; g.add(b);
+                    const hat = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.24, 6), new THREE.MeshLambertMaterial({ color: 0x8a2b2b, flatShading: true }));
+                    hat.position.y = 0.38; g.add(hat);
                     break;
                 }
                 case 'FLAMINGO': {
                     const mat = new THREE.MeshLambertMaterial({ color: 0xc4607a, flatShading: true });
                     for (let i = 0; i < 2; i++) {
-                        const leg = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.7, 0.04), MAT.metal);
-                        leg.position.set(i * 0.15, 0.35, 0); g.add(leg);
+                        const leg = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.5, 0.03), MAT.metal);
+                        leg.position.set(i * 0.1, 0.25, 0); g.add(leg);
                     }
-                    const body = new THREE.Mesh(new THREE.SphereGeometry(0.22, 6, 5), mat);
-                    body.position.set(0.07, 0.85, 0); body.scale.z = 1.6; g.add(body);
-                    const neck = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.45, 0.07), mat);
-                    neck.position.set(0.07, 1.15, -0.2); g.add(neck);
+                    const body = new THREE.Mesh(new THREE.SphereGeometry(0.15, 6, 5), mat);
+                    body.position.set(0.05, 0.6, 0); body.scale.z = 1.6; g.add(body);
+                    const neck = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.3, 0.05), mat);
+                    neck.position.set(0.05, 0.82, -0.14); g.add(neck);
                     break;
                 }
                 case 'HOOP': {
-                    const pole = new THREE.Mesh(new THREE.BoxGeometry(0.16, 3.2, 0.16), MAT.metal);
-                    pole.position.y = 1.6; g.add(pole);
-                    const board = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.9, 1.4), new THREE.MeshLambertMaterial({ color: 0x8d8d84, flatShading: true }));
-                    board.position.set(0, 3.1, 0); g.add(board);
-                    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.04, 4, 8), new THREE.MeshLambertMaterial({ color: 0xa8571f, flatShading: true }));
-                    rim.rotation.x = Math.PI / 2; rim.position.set(0.3, 2.85, 0); g.add(rim);
+                    const pole = new THREE.Mesh(new THREE.BoxGeometry(0.12, 3.0, 0.12), MAT.metal);
+                    pole.position.y = 1.5; g.add(pole);
+                    const board = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.7, 1.1), new THREE.MeshLambertMaterial({ color: 0x8d8d84, flatShading: true }));
+                    board.position.set(0, 2.9, 0); g.add(board);
+                    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.03, 4, 8), new THREE.MeshLambertMaterial({ color: 0xa8571f, flatShading: true }));
+                    rim.rotation.x = Math.PI / 2; rim.position.set(0.24, 2.65, 0); g.add(rim);
                     break;
                 }
                 case 'SWING': {
                     const mat = MAT.metal;
-                    [-1.4, 1.4].forEach(off => {
-                        const a = new THREE.Mesh(new THREE.BoxGeometry(0.1, 2.4, 0.1), mat);
-                        a.position.set(off, 1.2, -0.6); a.rotation.x = 0.35; g.add(a);
-                        const b = new THREE.Mesh(new THREE.BoxGeometry(0.1, 2.4, 0.1), mat);
-                        b.position.set(off, 1.2, 0.6); b.rotation.x = -0.35; g.add(b);
+                    [-1.1, 1.1].forEach(off => {
+                        const a = new THREE.Mesh(new THREE.BoxGeometry(0.08, 2.0, 0.08), mat);
+                        a.position.set(off, 1.0, -0.5); a.rotation.x = 0.32; g.add(a);
+                        const b = new THREE.Mesh(new THREE.BoxGeometry(0.08, 2.0, 0.08), mat);
+                        b.position.set(off, 1.0, 0.5); b.rotation.x = -0.32; g.add(b);
                     });
-                    const bar = new THREE.Mesh(new THREE.BoxGeometry(3.0, 0.1, 0.1), mat);
-                    bar.position.y = 2.3; g.add(bar);
-                    const seat = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.06, 0.22), MAT.dark);
-                    seat.position.set(0, 0.7, 0); g.add(seat);
+                    const bar = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.08, 0.08), mat);
+                    bar.position.y = 1.9; g.add(bar);
+                    const seat = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.05, 0.18), MAT.dark);
+                    seat.position.set(0, 0.6, 0); g.add(seat);
                     break;
                 }
-                case 'POOL': {
-                    const pool = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.0, 0.3, 10), new THREE.MeshLambertMaterial({ color: 0x2a6f8a, flatShading: true }));
-                    pool.position.y = 0.15; g.add(pool);
-                    break;
-                }
-                case 'DISH': {
-                    const pole = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.2, 0.1), MAT.metal);
-                    pole.position.y = 0.6; g.add(pole);
-                    const dish = new THREE.Mesh(new THREE.SphereGeometry(0.55, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshLambertMaterial({ color: 0x9a9a90, flatShading: true, side: THREE.DoubleSide }));
-                    dish.position.y = 1.3; dish.rotation.x = 2.2; g.add(dish);
-                    break;
-                }
-                case 'SALE': {
-                    const post = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.4, 0.08), MAT.wood);
-                    post.position.y = 0.7; g.add(post);
-                    const tex = makeTextTexture('FOR SALE', '#e8e4d8', '#8b1a1a', 96, 40);
-                    const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.5), new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide }));
-                    sign.position.y = 1.3; sign.rotation.y = house.dir === 1 ? Math.PI / 2 : -Math.PI / 2;
+                default: { // SALE
+                    const post = new THREE.Mesh(new THREE.BoxGeometry(0.07, 1.2, 0.07), MAT.wood);
+                    post.position.y = 0.6; g.add(post);
+                    const tex = makeTextTexture('FOR SALE', '#cfcabc', '#7d1f1f', 96, 40);
+                    const sign = new THREE.Mesh(new THREE.PlaneGeometry(0.95, 0.4), new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide }));
+                    sign.position.y = 1.05;
+                    sign.rotation.y = house.dir === 1 ? Math.PI / 2 : -Math.PI / 2;
                     g.add(sign);
-                    break;
-                }
-                case 'BIKE': {
-                    const mat = new THREE.MeshLambertMaterial({ color: 0x2f4f6f, flatShading: true });
-                    [-0.45, 0.45].forEach(off => {
-                        const w = new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.05, 4, 10), MAT.dark);
-                        w.position.set(0, 0.32, off); g.add(w);
-                    });
-                    const frame = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.35, 0.9), mat);
-                    frame.position.y = 0.55; g.add(frame);
-                    g.rotation.z = 0.5; // dumped on its side
-                    break;
-                }
-                case 'TRAMPOLINE': {
-                    const mat = new THREE.MeshLambertMaterial({ color: 0x1b1b22, flatShading: true });
-                    const top = new THREE.Mesh(new THREE.CylinderGeometry(1.7, 1.7, 0.12, 12), mat);
-                    top.position.y = 0.75; g.add(top);
-                    for (let i = 0; i < 6; i++) {
-                        const a = (i / 6) * Math.PI * 2;
-                        const leg = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.75, 0.08), MAT.metal);
-                        leg.position.set(Math.cos(a) * 1.5, 0.37, Math.sin(a) * 1.5); g.add(leg);
-                    }
-                    break;
-                }
-                default: { // SPRINKLER
-                    const s = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.12, 0.3), MAT.metal);
-                    s.position.y = 0.06; g.add(s);
                     break;
                 }
             }
             g.position.set(px, 0, pz);
-            g.rotation.y += rand(0, Math.PI * 2) * (kind === 'SALE' ? 0 : 1);
+            if (kind !== 'SALE') g.rotation.y = rand(0, Math.PI * 2);
             house.group.add(g);
-            if (kind === 'HOOP' || kind === 'SWING' || kind === 'TRAMPOLINE' || kind === 'DISH') {
-                addCollision(g, 0.15);
-            }
+            if (kind === 'HOOP' || kind === 'SWING') addCollision(g, 0.15);
         }
 
         // One car builder for the getaway car, driveway cars and the cruiser.
+        // One car builder, at the same scale as the person driving it.
         function makeCar(colorHex) {
             const group = new THREE.Group();
             const bodyMat = new THREE.MeshLambertMaterial({ color: colorHex, flatShading: true });
             const glassMat = new THREE.MeshLambertMaterial({ color: 0x0c1420, flatShading: true });
 
-            const body = new THREE.Mesh(new THREE.BoxGeometry(4.2, 1.0, 9), bodyMat);
-            body.position.y = 0.8; group.add(body);
-            const cabin = new THREE.Mesh(new THREE.BoxGeometry(3.6, 1.2, 4.5), glassMat);
-            cabin.position.set(0, 1.8, -0.5); group.add(cabin);
+            const body = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.62, 4.6), bodyMat);
+            body.position.y = 0.62; group.add(body);
+            const hood = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.24, 1.5), bodyMat);
+            hood.position.set(0, 0.98, -1.5); group.add(hood);
+            const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.78, 0.62, 2.1), glassMat);
+            cabin.position.set(0, 1.2, 0.1); group.add(cabin);
+            const roof = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.12, 2.0), bodyMat);
+            roof.position.set(0, 1.55, 0.1); group.add(roof);
+            const trunk = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.24, 1.3), bodyMat);
+            trunk.position.set(0, 0.98, 1.6); group.add(trunk);
 
-            const wheelGeom = new THREE.CylinderGeometry(0.7, 0.7, 4.4, 12);
+            const wheelGeom = new THREE.CylinderGeometry(0.34, 0.34, 2.06, 10);
             wheelGeom.rotateZ(Math.PI / 2);
-            const wheelMat = new THREE.MeshLambertMaterial({ color: 0x050505 });
-            const wf = new THREE.Mesh(wheelGeom, wheelMat); wf.position.set(0, 0.7, -2.8); group.add(wf);
-            const wb = new THREE.Mesh(wheelGeom, wheelMat); wb.position.set(0, 0.7, 2.8); group.add(wb);
+            const wheelMat = new THREE.MeshLambertMaterial({ color: 0x0a0a0a });
+            const wf = new THREE.Mesh(wheelGeom, wheelMat); wf.position.set(0, 0.34, -1.45); group.add(wf);
+            const wb = new THREE.Mesh(wheelGeom, wheelMat); wb.position.set(0, 0.34, 1.45); group.add(wb);
             group.userData.wheels = [wf, wb];
             return group;
         }
@@ -1535,7 +1533,7 @@
             // Lamp posts every few lots
             for (let i = 0; i < 6; i++) {
                 const lz = startZ - 10 + i * 30;
-                const lx = (i % 2 === 0) ? -8.6 : 8.6;
+                const lx = (i % 2 === 0) ? -7.7 : 7.7;
                 const pole = new THREE.Mesh(new THREE.BoxGeometry(0.2, 6, 0.2), MAT.dark);
                 pole.position.set(lx, 3, lz);
                 scene.add(pole);
@@ -1559,20 +1557,20 @@
 
         function scatterBushes(startZ) {
             const bushGeom = new THREE.DodecahedronGeometry(1.5, 0);
-            for (let i = 0; i < 90; i++) {
+            for (let i = 0; i < 80; i++) {
                 let bx, bz, ok = false, attempts = 0;
                 while (!ok && attempts < 20) {
-                    bx = (Math.random() > 0.5 ? 1 : -1) * rand(9.5, 24);
+                    bx = (Math.random() > 0.5 ? 1 : -1) * rand(9.0, 30);
                     bz = startZ + Math.random() * 165 - 5;
                     attempts++;
-                    ok = !blocksWalkway(bx, bz);
+                    ok = !blocksWalkway(bx, bz) && !insideFootprint(bx, bz, 0.8);
                 }
                 if (!ok) continue;
-                addBush(bx, bz, bushGeom, rand(0.8, 1.6));
+                addBush(bx, bz, bushGeom, rand(0.7, 1.2));
             }
             // Hedgerow cover along the last stretch toward the getaway car
-            for (let z = startZ - 66; z < startZ - 6; z += 5.5) {
-                addBush((Math.random() > 0.5 ? 1 : -1) * rand(9, 13), z + rand(-1.5, 1.5), bushGeom, rand(1.0, 1.5));
+            for (let z = startZ - 66; z < startZ - 6; z += 5.0) {
+                addBush((Math.random() > 0.5 ? 1 : -1) * rand(9, 14), z + rand(-1.5, 1.5), bushGeom, rand(0.9, 1.2));
             }
         }
 
@@ -1580,23 +1578,23 @@
             const carGroup = makeCar(0x112233);
             carGroup.position.set(4, 0.0, startZ - 60);
 
-            const hlGeom = new THREE.SphereGeometry(0.3, 8, 8);
+            const hlGeom = new THREE.BoxGeometry(0.34, 0.18, 0.1);
             const hlMat = new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0xffeeaa, emissiveIntensity: 0.0 });
-            const hl1 = new THREE.Mesh(hlGeom, hlMat); hl1.position.set(-1.6, 1.0, -4.5); carGroup.add(hl1);
-            const hl2 = new THREE.Mesh(hlGeom, hlMat); hl2.position.set(1.6, 1.0, -4.5); carGroup.add(hl2);
+            const hl1 = new THREE.Mesh(hlGeom, hlMat); hl1.position.set(-0.68, 0.78, -2.3); carGroup.add(hl1);
+            const hl2 = new THREE.Mesh(hlGeom, hlMat); hl2.position.set(0.68, 0.78, -2.3); carGroup.add(hl2);
 
             const tlMat = new THREE.MeshLambertMaterial({ color: 0xff0000, emissive: 0xaa0000, emissiveIntensity: 0.0 });
-            const tl1 = new THREE.Mesh(hlGeom, tlMat); tl1.position.set(-1.6, 1.0, 4.5); carGroup.add(tl1);
-            const tl2 = new THREE.Mesh(hlGeom, tlMat); tl2.position.set(1.6, 1.0, 4.5); carGroup.add(tl2);
+            const tl1 = new THREE.Mesh(hlGeom, tlMat); tl1.position.set(-0.68, 0.82, 2.3); carGroup.add(tl1);
+            const tl2 = new THREE.Mesh(hlGeom, tlMat); tl2.position.set(0.68, 0.82, 2.3); carGroup.add(tl2);
 
             const spot1 = new THREE.SpotLight(0xffeeaa, 0.0, 80, Math.PI / 5, 0.5, 1);
             spot1.position.copy(hl1.position);
-            spot1.target.position.set(-1.6, 0, -30);
+            spot1.target.position.set(-0.9, 0, -30);
             carGroup.add(spot1); carGroup.add(spot1.target);
 
             const spot2 = new THREE.SpotLight(0xffeeaa, 0.0, 80, Math.PI / 5, 0.5, 1);
             spot2.position.copy(hl2.position);
-            spot2.target.position.set(1.6, 0, -30);
+            spot2.target.position.set(0.9, 0, -30);
             carGroup.add(spot2); carGroup.add(spot2.target);
 
             car.lights = [hlMat, tlMat, spot1, spot2];
@@ -1652,27 +1650,27 @@
             const g = makeCar(0x0d1c33);
             // White door panels
             [-1, 1].forEach(s => {
-                const panel = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.7, 3.2), new THREE.MeshLambertMaterial({ color: 0xd8d8d8, flatShading: true }));
-                panel.position.set(s * 2.15, 0.9, 0.4);
+                const panel = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.42, 1.9), new THREE.MeshLambertMaterial({ color: 0xd8d8d8, flatShading: true }));
+                panel.position.set(s * 1.02, 0.66, 0.3);
                 g.add(panel);
             });
             police.redMat = new THREE.MeshLambertMaterial({ color: 0x551111, emissive: 0x220000, emissiveIntensity: 1 });
             police.blueMat = new THREE.MeshLambertMaterial({ color: 0x111155, emissive: 0x000022, emissiveIntensity: 1 });
-            const bar = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.16, 0.5), MAT.dark);
-            bar.position.set(0, 2.5, -0.5); g.add(bar);
-            const redBulb = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.34, 0.5), police.redMat);
-            redBulb.position.set(-0.62, 2.55, -0.5); g.add(redBulb);
-            const blueBulb = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.34, 0.5), police.blueMat);
-            blueBulb.position.set(0.62, 2.55, -0.5); g.add(blueBulb);
+            const bar = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.08, 0.3), MAT.dark);
+            bar.position.set(0, 1.65, -0.2); g.add(bar);
+            const redBulb = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.2, 0.3), police.redMat);
+            redBulb.position.set(-0.4, 1.76, -0.2); g.add(redBulb);
+            const blueBulb = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.2, 0.3), police.blueMat);
+            blueBulb.position.set(0.4, 1.76, -0.2); g.add(blueBulb);
 
             police.redLight = new THREE.PointLight(0xff2222, 0, 30);
-            police.redLight.position.set(-0.62, 2.8, -0.5); g.add(police.redLight);
+            police.redLight.position.set(-0.4, 1.95, -0.2); g.add(police.redLight);
             police.blueLight = new THREE.PointLight(0x2244ff, 0, 30);
-            police.blueLight.position.set(0.62, 2.8, -0.5); g.add(police.blueLight);
+            police.blueLight.position.set(0.4, 1.95, -0.2); g.add(police.blueLight);
 
             // Pillar-mounted searchlight - this is the thing that gets you caught
             police.spot = new THREE.SpotLight(0xffffff, 0, 45, Math.PI / 9, 0.35, 1);
-            police.spot.position.set(-2.2, 2.2, -1.5);
+            police.spot.position.set(-1.05, 1.45, -0.8);
             g.add(police.spot);
             // Target lives in world space so the sweep math stays readable
             scene.add(police.spot.target);
@@ -1876,6 +1874,7 @@
                 target: new THREE.Vector3().copy(yawObject.position),
                 home: home ? home.clone() : position.clone(),
                 searchTimer: 0, life: def.life, lastPulse: 0, lastBark: 0,
+                stuckT: 0, lastX: position.x, lastZ: position.z,
                 lastKnown: new THREE.Vector3().copy(yawObject.position), searchWander: 0,
                 bounce: new THREE.Vector3(), ignoreCollisionTimer: 1.2,
                 flash: def.flash ? FlashPool.acquire() : null,
@@ -1884,6 +1883,17 @@
             if (facingDir) mesh.rotation.y = Math.atan2(facingDir.x, facingDir.z);
             pursuers.push(p);
             return p;
+        }
+
+        // Somewhere near the last place you were seen that isn't inside
+        // somebody's living room.
+        function pickSearchPoint(p) {
+            for (let i = 0; i < 8; i++) {
+                const px = p.lastKnown.x + rand(-6, 6);
+                const pz = p.lastKnown.z + rand(-6, 6);
+                if (!insideFootprint(px, pz, 0.8)) return new THREE.Vector3(px, 0, pz);
+            }
+            return p.home.clone();
         }
 
         function despawnPursuer(p) {
@@ -2152,7 +2162,7 @@
                 // Silhouette in the window, shifting its weight
                 if (h.silT > 0) {
                     h.silT -= delta;
-                    h.silhouette.position.z = h.silBaseZ + Math.sin(time * 0.0011 + i) * 0.5;
+                    h.silhouette.position.z = h.silBaseZ + Math.sin(time * 0.0011 + i) * h.silSway;
                     if (h.silT <= 0) h.silhouette.visible = false;
                 }
 
@@ -2302,8 +2312,8 @@
                 document.getElementById('nv-overlay').style.display = 'block';
             } else {
                 scene.fog.color.setHex(0x0a0c10);
-                ambientLight.color.setHex(0x202530);
-                ambientLight.intensity = 1.5;
+                ambientLight.color.setHex(0x222836);
+                ambientLight.intensity = 1.8;
                 document.getElementById('nv-overlay').style.display = 'none';
             }
         }
@@ -2348,8 +2358,8 @@
             AudioSys.engineStart();
 
             yawObject.position.copy(car.group.position);
-            yawObject.position.y += 1.5;
-            yawObject.position.x -= 1.0;
+            yawObject.position.y += 1.15;
+            yawObject.position.x -= 0.55;
             yawObject.rotation.y = Math.PI;
             pitchObject.rotation.x = 0;
 
@@ -2427,7 +2437,7 @@
                 new THREE.Vector3(newPosition.x - r, 0, newPosition.z - r),
                 new THREE.Vector3(newPosition.x + r, 2, newPosition.z + r)
             );
-            if (newPosition.x < -25 || newPosition.x > 25 || newPosition.z > 80 || newPosition.z < -200) {
+            if (newPosition.x < -34 || newPosition.x > 34 || newPosition.z > 80 || newPosition.z < -200) {
                 return { hit: true, box: null };
             }
             for (let i = 0; i < collisionBoxes.length; i++) {
@@ -2614,7 +2624,7 @@
                         p.searchWander -= delta;
                         if (p.searchWander <= 0 || p.mesh.position.distanceTo(p.target) < 1.5) {
                             p.searchWander = rand(1.0, 2.0);
-                            p.target.set(p.lastKnown.x + rand(-6, 6), 0, p.lastKnown.z + rand(-6, 6));
+                            p.target.copy(pickSearchPoint(p));
                         }
                     }
                 } else if (p.state === 'RETURN') {
@@ -2698,8 +2708,24 @@
 
                     p.mesh.position.x += moveX;
                     p.mesh.position.z += moveZ;
-                    p.mesh.position.x = Math.max(-22, Math.min(22, p.mesh.position.x));
+                    p.mesh.position.x = Math.max(-30, Math.min(30, p.mesh.position.x));
                     p.bounce.multiplyScalar(0.85);
+                }
+
+                // -------- anti-jam: nobody stands pressed into a wall for
+                // ten seconds. If they stop making progress, look elsewhere.
+                p.stuckT += delta;
+                if (p.stuckT > 1.2) {
+                    const moved = Math.hypot(p.mesh.position.x - p.lastX, p.mesh.position.z - p.lastZ);
+                    p.stuckT = 0;
+                    p.lastX = p.mesh.position.x;
+                    p.lastZ = p.mesh.position.z;
+                    if (moved < 0.35) {
+                        if (p.state === 'RETURN') { despawnPursuer(p); continue; }
+                        p.searchWander = rand(1.0, 2.0);
+                        p.target.copy(pickSearchPoint(p));
+                        p.bounce.set((Math.random() - 0.5) * 3, 0, (Math.random() - 0.5) * 3);
+                    }
                 }
 
                 // -------- flashlight follows its owner
